@@ -503,3 +503,101 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         )
 
     return messages
+
+
+# ============================================================================
+# PROCESSING - UNRETURNED BAGS
+# ============================================================================
+
+def generate_bags_messages(csv_path: str, safe_mode: bool = False) -> dict:
+    """
+    Reads from List_of_not_returned_*.csv
+
+    Columns used:
+        DSP, Route Code, Date, Bag, Transporter_id, Unrecovered
+
+    Groups by DSP -> Date -> Route Code, counts bags per route per date.
+    Flags routes with 3+ bags as high priority.
+    Date range = min to max date across all rows for that DSP.
+    One message per DSP.
+    """
+    FLAG_THRESHOLD = 3  # routes with this many or more bags get flagged
+
+    # dsp_data[dsp][date_str][route] = list of bag IDs
+    dsp_data   = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    first_dates = {}
+
+    with open(csv_path, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            dsp   = str(row.get('DSP', '') or '').strip()
+            route = str(row.get('Route Code', '') or '').strip()
+            bag   = str(row.get('Bag', '') or '').strip()
+            date_raw = str(row.get('Date', '') or '').strip()
+
+            if not dsp or not route or not bag:
+                continue
+
+            # Parse date to DD/MM/YYYY
+            date_str = fmt_date(date_raw)
+            dsp_data[dsp][date_str][route].append(bag)
+
+    if not dsp_data:
+        raise ValueError(
+            'No bag data found in CSV.\n'
+            'Check the file contains DSP, Route Code, Bag and Date columns.'
+        )
+
+    messages = {}
+    for dsp in sorted(dsp_data.keys()):
+        dates_dict   = dsp_data[dsp]
+        all_dates    = sorted(dates_dict.keys(),
+                              key=lambda d: datetime.strptime(d, '%d/%m/%Y')
+                              if d else datetime.min)
+        date_from    = all_dates[0]  if all_dates else ''
+        date_to      = all_dates[-1] if all_dates else ''
+        total_bags   = sum(
+            len(bags)
+            for date_routes in dates_dict.values()
+            for bags in date_routes.values()
+        )
+        flagged_count = sum(
+            1
+            for date_routes in dates_dict.values()
+            for bags in date_routes.values()
+            if len(bags) >= FLAG_THRESHOLD
+        )
+
+        # Build per-date sections
+        sections = []
+        for date_str in all_dates:
+            routes_dict = dates_dict[date_str]
+            # Sort routes alphabetically
+            sorted_routes = sorted(routes_dict.keys())
+
+            headers   = ['Route Code', 'Missing Bags']
+            data_rows = []
+            for route in sorted_routes:
+                count = len(routes_dict[route])
+                flag  = ' [!]' if count >= FLAG_THRESHOLD else ''
+                data_rows.append([route, f'{count}{flag}'])
+
+            sections.append(
+                f'{date_str}\n'
+                + pad_cols(headers, data_rows)
+            )
+
+        flag_line = (
+            f'{flagged_count} route(s) with {FLAG_THRESHOLD}+ bags flagged [!]\n'
+            if flagged_count else ''
+        )
+
+        messages[dsp] = (
+            f'Unreturned Bags — {dsp} — {date_from} to {date_to}\n'
+            f'Total unreturned: {total_bags} bag(s)\n'
+            f'{flag_line}'
+            f'\n'
+            + '\n\n'.join(sections)
+        )
+
+    return messages

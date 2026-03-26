@@ -23,6 +23,7 @@ from processing.dsp_core import (
     generate_cc_messages,
     generate_pod_messages,
     generate_noa_messages,
+    generate_bags_messages,
 )
 from storage.webhook_store import (
     load_webhooks, save_webhooks,
@@ -116,6 +117,15 @@ TOOLS = {
         'safe_affected': True,
         'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
     },
+    'bags': {
+        'name':      'Unreturned Bags',
+        'icon':      'bi-bag-fill',
+        'emoji':     '👜',
+        'desc':      'Unreturned bags per DSP — grouped by date and route, flags routes with 3+ bags',
+        'files':     [{'id': 'csv_file', 'label': 'Unreturned Bags CSV',
+                       'hint': 'List_of_not_returned_*.csv', 'required': True}],
+        'safe_affected': False,
+    },
 }
 
 # Map tool_id → generate function
@@ -127,6 +137,7 @@ GENERATORS = {
     'cc':        generate_cc_messages,
     'pod':       generate_pod_messages,
     'noa':       generate_noa_messages,
+    'bags':      generate_bags_messages,
 }
 
 
