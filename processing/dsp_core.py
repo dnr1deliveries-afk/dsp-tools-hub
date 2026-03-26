@@ -2,13 +2,15 @@
 DSP Tools Hub — Processing Engine
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
+
+Message format: plain-text single line per record, pipe-separated.
+No tables — trigger webhooks render in proportional font so tables never align.
 """
 
 import csv
 import io
 import hashlib
 import re
-import unicodedata
 from collections import defaultdict
 from datetime import datetime
 
@@ -40,68 +42,10 @@ def fmt_pct(val) -> str:
         return str(val)
 
 
-def is_zero_row(row_dict: dict) -> bool:
-    return all(v in (0, 0.0, '0', None, '') for v in row_dict.values())
-
-
-def _display_width(text: str) -> int:
-    """
-    Return the rendered column width of a string in a monospace font.
-    Emojis and wide Unicode characters occupy 2 columns; everything else 1.
-    Uses unicodedata.east_asian_width — 'W' (Wide) and 'F' (Fullwidth) = 2 cols.
-    Variation selectors (U+FE0F etc.) are zero-width — skip them.
-    """
-    width = 0
-    for ch in str(text):
-        cp = ord(ch)
-        # Skip variation selectors and zero-width joiners
-        if 0xFE00 <= cp <= 0xFE0F or cp in (0x200D, 0x20E3):
-            continue
-        eaw = unicodedata.east_asian_width(ch)
-        if eaw in ('W', 'F'):
-            width += 2
-        else:
-            # Emoji outside the EAW 'W' bucket (most modern emoji: U+1F300+)
-            # Check Unicode general category — 'So' = Symbol, Other (most emoji)
-            if unicodedata.category(ch) in ('So', 'Sm') and cp > 0x2000:
-                width += 2
-            else:
-                width += 1
-    return width
-
-
-def format_table(headers: list, rows: list) -> str:
-    """
-    Build a padded pipe table wrapped in Slack code block backticks.
-    Triple backticks force Slack into monospace rendering so columns align visually.
-    Uses _display_width() so emoji/wide chars don't break padding calculations.
-    """
-    all_rows = [headers] + rows
-
-    col_widths = [
-        max(_display_width(str(all_rows[r][c])) for r in range(len(all_rows)))
-        for c in range(len(headers))
-    ]
-
-    def pad_cell(cell, width):
-        s = str(cell)
-        return s + ' ' * max(0, width - _display_width(s))
-
-    def pad_row(row):
-        return '| ' + ' | '.join(pad_cell(cell, col_widths[i])
-                                  for i, cell in enumerate(row)) + ' |'
-
-    separator = '| ' + ' | '.join('-' * w for w in col_widths) + ' |'
-    lines     = [pad_row(headers), separator] + [pad_row(r) for r in rows]
-
-    # Wrap in triple backticks — forces Slack monospace code block so spacing holds
-    return '```\n' + '\n'.join(lines) + '\n```'
-
 def mask_id(raw_id: str) -> str:
     """
-    Deterministic 4-char hex token derived from the raw ID.
-    Same input always produces same token within a run — consistent but not reversible.
-    Example: 'AB12CDE' → 'DA-4F2A'
+    Deterministic 4-char hex token. Same input = same token within a run.
+    Example: 'AB12CDE' -> 'DA-4F2A'
     """
     if not raw_id:
         return 'DA-????'
@@ -115,6 +59,11 @@ def _open_csv(file_bytes: bytes):
     return csv.DictReader(io.StringIO(text))
 
 
+def _divider() -> str:
+    """Thin visual divider between sections."""
+    return '─' * 30
+
+
 # ============================================================================
 # DSP CHASE
 # ============================================================================
@@ -122,7 +71,6 @@ def _open_csv(file_bytes: bytes):
 def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
     Input: OUTSTANDING SCRUB ERROR*.csv
-    Columns: DSP Name, trackingId, Attempt Reason Code
     Safe mode: no change (no driver IDs in this report).
     """
     dsp_data = defaultdict(lambda: {'chase': set(), 'missing': set()})
@@ -143,22 +91,30 @@ def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         chase   = sorted(dsp_data[dsp]['chase'])
         missing = sorted(dsp_data[dsp]['missing'])
         sections = []
+
         if chase:
-            bullets = '\n'.join(f'• {t}' for t in chase)
-            sections.append(f'📦 To Chase ({len(chase)})\n{bullets}')
+            lines = [f'To Chase ({len(chase)}):']
+            lines += [f'  {t}' for t in chase]
+            sections.append('\n'.join(lines))
+
         if missing:
-            bullets = '\n'.join(f'• {t}' for t in missing)
-            sections.append(f'🔴 Driver Marked Missing ({len(missing)})\n{bullets}')
+            lines = [f'Driver Marked Missing ({len(missing)}):']
+            lines += [f'  {t}' for t in missing]
+            sections.append('\n'.join(lines))
+
         if not sections:
             continue
+
         messages[dsp] = (
-            f'📦 Outstanding Shipments - {dsp}\n'
-            f'Last updated: {today}\n\n'
-            f'Good morning. Please see below for any shipments that have not been returned to the station.\n\n'
+            f'Outstanding Shipments — {dsp}\n'
+            f'Updated: {today}\n\n'
+            f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
             + '\n\n'.join(sections) +
-            f'\n\n⚡ Action Required\n'
-            f'1. Contact the driver\n2. Confirm the return\n3. Update this thread\n\n'
-            f'Appreciate your support.'
+            '\n\nAction Required:\n'
+            '1. Contact the driver\n'
+            '2. Confirm the return\n'
+            '3. Update this thread\n\n'
+            'Appreciate your support.'
         )
     return messages
 
@@ -192,7 +148,7 @@ def _format_pickup_type(pickup_type: str, route_code: str = '') -> str:
     elif t == 'NOREASON': base = 'Counter'
     elif not t:           base = 'Home'
     else:                 base = pickup_type.title()
-    return f'{base} - {route_code}' if route_code else base
+    return f'{base} — {route_code}' if route_code else base
 
 
 def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
@@ -207,7 +163,6 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
     pickup_date  = None
 
     rows = list(_open_csv(pickup_bytes))
-    # Pre-process: fill empty Pick up Type
     for row in rows:
         ptype  = row.get('Pick up Type', '').strip()
         window = row.get('Pick up Start Window', '').strip()
@@ -239,13 +194,17 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
 
     messages = {}
     for dsp in sorted(dsp_pickups.keys()):
-        pickups   = sorted(dsp_pickups[dsp], key=lambda x: x['route_number'])
-        data_rows = [[p['tracking_id'], p['related_delivery'], p['pickup_type']] for p in pickups]
-        headers   = ['Tracking ID', 'Related Delivery', 'Pickup Type']
-        messages[dsp] = (
-            f'## {dsp} Pickups for {pickup_date}\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+        pickups = sorted(dsp_pickups[dsp], key=lambda x: x['route_number'])
+        lines   = [
+            f'{dsp} Pickups — {pickup_date}',
+            f'{len(pickups)} awaiting pickup\n',
+            'Tracking ID     | Related Delivery | Type',
+        ]
+        for p in pickups:
+            lines.append(
+                f"{p['tracking_id']} | {p['related_delivery']} | {p['pickup_type']}"
+            )
+        messages[dsp] = '\n'.join(lines)
 
     return messages, pickup_date
 
@@ -275,35 +234,32 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        data_rows = []
+        lines = [
+            f'Rostering Accuracy — {dsp} — {first_date}',
+            '',
+            'Hi team, please find your rostering accuracy below.',
+            'Provide root cause for any service type below 90%.\n',
+            'Service Type | Compliance | @15:30 | @Seq | D-1 vs D0',
+        ]
+
         for r in dsp_rows[dsp]:
-            svc      = str(r.get('Service Type', '') or '').strip()
+            svc = str(r.get('Service Type', '') or '').strip()
             try:    comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
             except: comp_raw = 0.0
-            flag     = ' [!]' if comp_raw < 0.9 else ''   # text flag — no emoji in table cells
-            comp_str = f'{comp_raw:.0%}{flag}'
-            r1530    = str(r.get('Rostered routes before 15:30', '') or '').strip()
-            r_seq    = str(r.get('Rostered routes before Sequencing', '') or '').strip()
-            d1d0     = str(r.get('D-1 15:30 Plan vs D0 requested', '') or '').strip()
-            for val in [r1530, r_seq, d1d0]:
-                try: val = str(int(float(val)))
-                except: pass
-            try:    r1530 = str(int(float(r1530)))
-            except: pass
-            try:    r_seq = str(int(float(r_seq)))
-            except: pass
-            try:    d1d0  = str(int(float(d1d0)))
-            except: pass
-            data_rows.append([svc, comp_str, r1530, r_seq, d1d0])
 
-        headers   = ['Service Type', 'Compliance %', 'Routes Before 15:30', 'Routes Before Seq', 'D-1 vs D0']
-        messages[dsp] = (
-            f'## Daily Deep Dive - Rostering Accuracy - {first_date}\n\n'
-            f'Hi team, kindly find below your rostering accuracy, split by each service type. '
-            f'Could you please provide us with insight and root cause for all service types '
-            f'that have <90% accuracy? [!] = below 90%\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+            flag  = ' [!]' if comp_raw < 0.9 else ''
+            comp  = f'{comp_raw:.0%}{flag}'
+
+            try:    r1530 = str(int(float(r.get('Rostered routes before 15:30', '') or 0)))
+            except: r1530 = '-'
+            try:    r_seq = str(int(float(r.get('Rostered routes before Sequencing', '') or 0)))
+            except: r_seq = '-'
+            try:    d1d0  = str(int(float(r.get('D-1 15:30 Plan vs D0 requested', '') or 0)))
+            except: d1d0  = '-'
+
+            lines.append(f'{svc} | {comp} | {r1530} | {r_seq} | {d1d0}')
+
+        messages[dsp] = '\n'.join(lines)
 
     return messages
 
@@ -317,11 +273,10 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     Input: Dive Deep Data Service Type Compliance*.csv
     Safe mode: VIN replaced with deterministic DA-XXXX token.
     """
-    # Text labels instead of emoji — keeps table column alignment clean in Slack
-    SWAP_ICONS = {
-        'plan:small execute:large': 'UP   ',
-        'plan:large execute:small': 'DOWN ',
-        'plan equal execute':       'SWAP ',
+    SWAP_LABELS = {
+        'plan:small execute:large': 'UPGRADED',
+        'plan:large execute:small': 'DOWNGRADED',
+        'plan equal execute':       'TIER MISMATCH',
     }
     dsp_rows   = defaultdict(list)
     first_date = ''
@@ -336,15 +291,13 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             first_date = fmt_date(row.get('date', ''))
 
         raw_vin = str(row.get('vin', '') or '').strip()
-        vin     = mask_id(raw_vin) if safe_mode else raw_vin
-
         dsp_rows[dsp].append({
             'date':  fmt_date(row.get('date', '')),
-            'vin':   vin,
+            'vin':   mask_id(raw_vin) if safe_mode else raw_vin,
             'd1':    str(row.get('day_1_planned_service_type_and_route_service_type', '') or '').strip(),
             'd0':    str(row.get('day0_actual_executed_vehicle_service_type', '') or '').strip(),
             'route': str(row.get('route_id', '') or '').strip(),
-            'swap':  SWAP_ICONS.get(str(row.get('not_compliant_type', '') or '').strip(), '—'),
+            'swap':  SWAP_LABELS.get(str(row.get('not_compliant_type', '') or '').strip(), 'UNKNOWN'),
         })
 
     if not dsp_rows:
@@ -352,17 +305,18 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        data_rows = [[r['date'], r['vin'], r['d1'], r['d0'], r['route'], r['swap']]
-                     for r in dsp_rows[dsp]]
-        headers   = ['Date', 'VIN', 'D-1 Planned', 'D-0 Actual', 'Route', 'Swap']
-        messages[dsp] = (
-            f'## Daily Deep Dive - Service Type Compliance - {first_date}\n\n'
-            f'Hi team, kindly find below the service type swaps conducted on D-0 vs D-1 plan. '
-            f'Could you please provide us with some insight as to why the vehicles have been '
-            f'swapped for the below routes? Thank you\n\n'
-            f'UP = Upgraded to larger  |  DOWN = Downgraded to smaller  |  SWAP = Tier mismatch\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+        lines = [
+            f'Service Type Compliance — {dsp} — {first_date}',
+            '',
+            'Hi team, please find below the D-0 vehicle swaps vs D-1 plan.',
+            'Please provide insight on why these vehicles were swapped.\n',
+            'Route | VIN | D-1 Planned | D-0 Actual | Change',
+        ]
+        for r in dsp_rows[dsp]:
+            lines.append(
+                f"{r['route']} | {r['vin']} | {r['d1']} | {r['d0']} | {r['swap']}"
+            )
+        messages[dsp] = '\n'.join(lines)
 
     return messages
 
@@ -394,27 +348,34 @@ def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        data_rows = []
+        lines = [
+            f'Contact Compliance — {dsp} — {first_date}',
+            f'{len(dsp_rows[dsp])} exception(s)\n',
+            'Tracking ID | Driver | Reason | Call | Text',
+        ]
+
         for r in dsp_rows[dsp]:
-            date     = fmt_date(r.get('Event Date', ''))
             scan_id  = str(r.get('Scannable ID', '') or '').strip()
             raw_tid  = str(r.get('Transporter ID', '') or '').strip()
             trans_id = mask_id(raw_tid) if safe_mode else raw_tid
             reason   = str(r.get('Shipment Reason', '') or '').strip()
             call_ev  = str(r.get('Call Event', '') or '').strip() or '-'
             text_ev  = str(r.get('Text Event', '') or '').strip() or '-'
+
             try:
                 dur_raw  = float(r.get('Total Call Duration (sec)', 0) or 0)
                 call_dur = f'{int(dur_raw)}s' if dur_raw > 0 else '0s'
             except (ValueError, TypeError):
                 call_dur = '0s'
-            data_rows.append([date, scan_id, trans_id, reason, call_ev, call_dur, text_ev])
 
-        headers   = ['Date', 'Tracking ID', 'Transporter ID', 'Shipment Reason', 'Call Event', 'Duration', 'Text Event']
-        messages[dsp] = (
-            f'## Daily Deep Dive - Contact Compliance - {first_date}\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+            # Condense call info: event + duration in one field
+            call_str = f'{call_ev} ({call_dur})' if call_ev != '-' else f'- ({call_dur})'
+
+            lines.append(
+                f'{scan_id} | {trans_id} | {reason} | {call_str} | {text_ev}'
+            )
+
+        messages[dsp] = '\n'.join(lines)
 
     return messages
 
@@ -446,20 +407,21 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        data_rows = []
+        lines = [
+            f'POD Opportunities — {dsp} — {first_date}',
+            f'{len(dsp_rows[dsp])} reject(s)\n',
+            'Tracking ID | DA | Shipment Reason | Reject Reason',
+        ]
+
         for r in dsp_rows[dsp]:
             tid       = str(r.get('tracking_id', '') or '').strip()
             raw_da    = str(r.get('DA ID', '') or '').strip()
             da_id     = mask_id(raw_da) if safe_mode else raw_da
             ship_rsn  = str(r.get('shipment_reason', '') or '').strip()
             audit_rsn = str(r.get('audit_state_reason', '') or '').strip() or '-'
-            data_rows.append([tid, da_id, ship_rsn, audit_rsn])
+            lines.append(f'{tid} | {da_id} | {ship_rsn} | {audit_rsn}')
 
-        headers   = ['Tracking ID', 'DA ID', 'Shipment Reason', 'Reject Reason']
-        messages[dsp] = (
-            f'## Daily Deep Dive - POD Opportunities - {first_date}\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+        messages[dsp] = '\n'.join(lines)
 
     return messages
 
@@ -492,10 +454,9 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         raise ValueError("No NOTIFY_OF_ARRIVAL rows found. Check the correct Exceptions CSV is selected.")
 
     intro = (
-        'Hi all, as mentioned in the roundtables, Notify of Arrival has proven to have a '
-        'positive impact on OTR safety, Concessions, CC, DCR and overall customer experience. '
-        'Kindly find below all the drivers that have utilised Notify of Arrival on the date '
-        'mentioned in the title.'
+        'Hi all — Notify of Arrival has a positive impact on OTR safety, Concessions, '
+        'CC, DCR and overall customer experience. '
+        'Below are all drivers who utilised NOA on the date shown.'
     )
 
     messages = {}
@@ -504,17 +465,19 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         sorted_entries = sorted(counts.items(), key=lambda x: x[1], reverse=True)
         grand_total   = sum(counts.values())
 
-        data_rows = []
+        lines = [
+            f'Notify of Arrival — {dsp} — {first_date}',
+            '',
+            intro,
+            '',
+            f'Driver | NOA Count',
+        ]
+
         for tid, count in sorted_entries:
             display = mask_id(tid) if safe_mode else tid
-            data_rows.append([display, str(count)])
-        data_rows.append(['Grand Total', str(grand_total)])
+            lines.append(f'{display} | {count}')
 
-        headers   = ['DA ID', 'NOA Count']
-        messages[dsp] = (
-            f'## Notify of Arrival - {first_date}\n\n'
-            f'{intro}\n\n'
-            f'{format_table(headers, data_rows)}'
-        )
+        lines.append(f'\nTotal: {grand_total}')
+        messages[dsp] = '\n'.join(lines)
 
     return messages
