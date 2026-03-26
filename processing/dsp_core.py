@@ -8,6 +8,7 @@ import csv
 import io
 import hashlib
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 
@@ -43,21 +44,59 @@ def is_zero_row(row_dict: dict) -> bool:
     return all(v in (0, 0.0, '0', None, '') for v in row_dict.values())
 
 
+def _display_width(text: str) -> int:
+    """
+    Return the rendered column width of a string in a monospace font.
+    Emojis and wide Unicode characters occupy 2 columns; everything else 1.
+    Uses unicodedata.east_asian_width — 'W' (Wide) and 'F' (Fullwidth) = 2 cols.
+    Variation selectors (U+FE0F etc.) are zero-width — skip them.
+    """
+    width = 0
+    for ch in str(text):
+        cp = ord(ch)
+        # Skip variation selectors and zero-width joiners
+        if 0xFE00 <= cp <= 0xFE0F or cp in (0x200D, 0x20E3):
+            continue
+        eaw = unicodedata.east_asian_width(ch)
+        if eaw in ('W', 'F'):
+            width += 2
+        else:
+            # Emoji outside the EAW 'W' bucket (most modern emoji: U+1F300+)
+            # Check Unicode general category — 'So' = Symbol, Other (most emoji)
+            if unicodedata.category(ch) in ('So', 'Sm') and cp > 0x2000:
+                width += 2
+            else:
+                width += 1
+    return width
+
+
 def format_table(headers: list, rows: list) -> str:
-    """Build a padded markdown table for Slack monospace rendering."""
+    """
+    Build a padded pipe table aligned for Slack monospace rendering.
+    Uses display_width() so emoji and wide chars don't break column alignment.
+    Each column is as wide as the widest cell (by rendered width, not byte length).
+    """
     all_rows = [headers] + rows
+
+    # Column widths based on rendered display width, not len()
     col_widths = [
-        max(len(str(all_rows[r][c])) for r in range(len(all_rows)))
+        max(_display_width(str(all_rows[r][c])) for r in range(len(all_rows)))
         for c in range(len(headers))
     ]
 
+    def pad_cell(cell, width):
+        s      = str(cell)
+        filled = _display_width(s)
+        # Pad with spaces to reach the target column width
+        return s + ' ' * max(0, width - filled)
+
     def pad_row(row):
-        return '| ' + ' | '.join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(row)) + ' |'
+        return '| ' + ' | '.join(pad_cell(cell, col_widths[i])
+                                  for i, cell in enumerate(row)) + ' |'
 
     separator = '| ' + ' | '.join('-' * w for w in col_widths) + ' |'
-    lines = [pad_row(headers), separator] + [pad_row(r) for r in rows]
+    lines     = [pad_row(headers), separator] + [pad_row(r) for r in rows]
     return '\n'.join(lines)
-
 
 def mask_id(raw_id: str) -> str:
     """
@@ -242,7 +281,7 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
             svc      = str(r.get('Service Type', '') or '').strip()
             try:    comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
             except: comp_raw = 0.0
-            flag     = ' ⚠️' if comp_raw < 0.9 else ''
+            flag     = ' [!]' if comp_raw < 0.9 else ''   # text flag — no emoji in table cells
             comp_str = f'{comp_raw:.0%}{flag}'
             r1530    = str(r.get('Rostered routes before 15:30', '') or '').strip()
             r_seq    = str(r.get('Rostered routes before Sequencing', '') or '').strip()
@@ -263,7 +302,7 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
             f'## Daily Deep Dive - Rostering Accuracy - {first_date}\n\n'
             f'Hi team, kindly find below your rostering accuracy, split by each service type. '
             f'Could you please provide us with insight and root cause for all service types '
-            f'that have <90% accuracy? ⚠️ = below 90%\n\n'
+            f'that have <90% accuracy? [!] = below 90%\n\n'
             f'{format_table(headers, data_rows)}'
         )
 
@@ -279,10 +318,11 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     Input: Dive Deep Data Service Type Compliance*.csv
     Safe mode: VIN replaced with deterministic DA-XXXX token.
     """
+    # Text labels instead of emoji — keeps table column alignment clean in Slack
     SWAP_ICONS = {
-        'plan:small execute:large': '⬆️',
-        'plan:large execute:small': '⬇️',
-        'plan equal execute':       '🔄',
+        'plan:small execute:large': 'UP   ',
+        'plan:large execute:small': 'DOWN ',
+        'plan equal execute':       'SWAP ',
     }
     dsp_rows   = defaultdict(list)
     first_date = ''
@@ -321,7 +361,7 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             f'Hi team, kindly find below the service type swaps conducted on D-0 vs D-1 plan. '
             f'Could you please provide us with some insight as to why the vehicles have been '
             f'swapped for the below routes? Thank you\n\n'
-            f'⬆️ = Upgraded to larger  |  ⬇️ = Downgraded to smaller  |  🔄 = Tier mismatch\n\n'
+            f'UP = Upgraded to larger  |  DOWN = Downgraded to smaller  |  SWAP = Tier mismatch\n\n'
             f'{format_table(headers, data_rows)}'
         )
 
