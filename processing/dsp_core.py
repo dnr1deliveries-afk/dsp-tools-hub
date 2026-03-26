@@ -3,8 +3,9 @@ DSP Tools Hub — Processing Engine
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
 
-Message format: plain-text single line per record, pipe-separated.
-No tables — trigger webhooks render in proportional font so tables never align.
+Message format: pipe-separated columns, each padded to longest value + 5 spaces.
+Pipes won't be pixel-perfect in Slack's proportional font but give clear visual
+separation between fields.
 """
 
 import csv
@@ -59,9 +60,40 @@ def _open_csv(file_bytes: bytes):
     return csv.DictReader(io.StringIO(text))
 
 
-def _divider() -> str:
-    """Thin visual divider between sections."""
-    return '─' * 30
+def pad_cols(headers: list, rows: list, extra: int = 5) -> str:
+    """
+    Render a list of rows as pipe-separated text with padded columns.
+
+    Each column width = max(len of all values in that column, len of header) + extra.
+    Padding is spaces so pipes land at consistent positions across rows.
+    Not pixel-perfect in Slack's proportional font but visually clear.
+
+    headers : list of column header strings
+    rows    : list of lists, same length as headers
+    extra   : spaces added beyond the longest value (default 5)
+
+    Returns a single string — header row + separator + data rows.
+    """
+    all_rows = [headers] + rows
+
+    # Column widths: max cell length + extra padding
+    col_widths = [
+        max(len(str(all_rows[r][c])) for r in range(len(all_rows))) + extra
+        for c in range(len(headers))
+    ]
+
+    def fmt_row(row):
+        return '| ' + '| '.join(
+            str(cell).ljust(col_widths[i])
+            for i, cell in enumerate(row)
+        )
+
+    # Separator uses dashes to width of each column
+    separator = '| ' + '| '.join('-' * col_widths[i] for i in range(len(headers)))
+
+    lines = [fmt_row(headers), separator]
+    lines += [fmt_row(r) for r in rows]
+    return '\n'.join(lines)
 
 
 # ============================================================================
@@ -194,17 +226,17 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
 
     messages = {}
     for dsp in sorted(dsp_pickups.keys()):
-        pickups = sorted(dsp_pickups[dsp], key=lambda x: x['route_number'])
-        lines   = [
-            f'{dsp} Pickups — {pickup_date}',
-            f'{len(pickups)} awaiting pickup\n',
-            'Tracking ID     | Related Delivery | Type',
+        pickups   = sorted(dsp_pickups[dsp], key=lambda x: x['route_number'])
+        headers   = ['Tracking ID', 'Related Delivery', 'Pickup Type']
+        data_rows = [
+            [p['tracking_id'], p['related_delivery'], p['pickup_type']]
+            for p in pickups
         ]
-        for p in pickups:
-            lines.append(
-                f"{p['tracking_id']} | {p['related_delivery']} | {p['pickup_type']}"
-            )
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'{dsp} Pickups — {pickup_date}\n'
+            f'{len(pickups)} awaiting pickup\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages, pickup_date
 
@@ -234,32 +266,29 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        lines = [
-            f'Rostering Accuracy — {dsp} — {first_date}',
-            '',
-            'Hi team, please find your rostering accuracy below.',
-            'Provide root cause for any service type below 90%.\n',
-            'Service Type | Compliance | @15:30 | @Seq | D-1 vs D0',
-        ]
+        headers   = ['Service Type', 'Compliance', 'Routes @15:30', 'Routes @Seq', 'D-1 vs D0']
+        data_rows = []
 
         for r in dsp_rows[dsp]:
             svc = str(r.get('Service Type', '') or '').strip()
             try:    comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
             except: comp_raw = 0.0
-
             flag  = ' [!]' if comp_raw < 0.9 else ''
             comp  = f'{comp_raw:.0%}{flag}'
-
             try:    r1530 = str(int(float(r.get('Rostered routes before 15:30', '') or 0)))
             except: r1530 = '-'
             try:    r_seq = str(int(float(r.get('Rostered routes before Sequencing', '') or 0)))
             except: r_seq = '-'
             try:    d1d0  = str(int(float(r.get('D-1 15:30 Plan vs D0 requested', '') or 0)))
             except: d1d0  = '-'
+            data_rows.append([svc, comp, r1530, r_seq, d1d0])
 
-            lines.append(f'{svc} | {comp} | {r1530} | {r_seq} | {d1d0}')
-
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'Rostering Accuracy — {dsp} — {first_date}\n\n'
+            f'Hi team, please find your rostering accuracy below. '
+            f'Provide root cause for any service type below 90%. [!] = below 90%\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages
 
@@ -305,18 +334,17 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        lines = [
-            f'Service Type Compliance — {dsp} — {first_date}',
-            '',
-            'Hi team, please find below the D-0 vehicle swaps vs D-1 plan.',
-            'Please provide insight on why these vehicles were swapped.\n',
-            'Route | VIN | D-1 Planned | D-0 Actual | Change',
+        headers   = ['Route', 'VIN', 'D-1 Planned', 'D-0 Actual', 'Change']
+        data_rows = [
+            [r['route'], r['vin'], r['d1'], r['d0'], r['swap']]
+            for r in dsp_rows[dsp]
         ]
-        for r in dsp_rows[dsp]:
-            lines.append(
-                f"{r['route']} | {r['vin']} | {r['d1']} | {r['d0']} | {r['swap']}"
-            )
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'Service Type Compliance — {dsp} — {first_date}\n\n'
+            f'Hi team, please find below the D-0 vehicle swaps vs D-1 plan. '
+            f'Please provide insight on why these vehicles were swapped.\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages
 
@@ -348,11 +376,8 @@ def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        lines = [
-            f'Contact Compliance — {dsp} — {first_date}',
-            f'{len(dsp_rows[dsp])} exception(s)\n',
-            'Tracking ID | Driver | Reason | Call | Text',
-        ]
+        headers   = ['Tracking ID', 'Driver', 'Reason', 'Call', 'Text']
+        data_rows = []
 
         for r in dsp_rows[dsp]:
             scan_id  = str(r.get('Scannable ID', '') or '').strip()
@@ -361,21 +386,19 @@ def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             reason   = str(r.get('Shipment Reason', '') or '').strip()
             call_ev  = str(r.get('Call Event', '') or '').strip() or '-'
             text_ev  = str(r.get('Text Event', '') or '').strip() or '-'
-
             try:
                 dur_raw  = float(r.get('Total Call Duration (sec)', 0) or 0)
                 call_dur = f'{int(dur_raw)}s' if dur_raw > 0 else '0s'
             except (ValueError, TypeError):
                 call_dur = '0s'
-
-            # Condense call info: event + duration in one field
             call_str = f'{call_ev} ({call_dur})' if call_ev != '-' else f'- ({call_dur})'
+            data_rows.append([scan_id, trans_id, reason, call_str, text_ev])
 
-            lines.append(
-                f'{scan_id} | {trans_id} | {reason} | {call_str} | {text_ev}'
-            )
-
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'Contact Compliance — {dsp} — {first_date}\n'
+            f'{len(data_rows)} exception(s)\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages
 
@@ -407,11 +430,8 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_rows.keys()):
-        lines = [
-            f'POD Opportunities — {dsp} — {first_date}',
-            f'{len(dsp_rows[dsp])} reject(s)\n',
-            'Tracking ID | DA | Shipment Reason | Reject Reason',
-        ]
+        headers   = ['Tracking ID', 'DA', 'Shipment Reason', 'Reject Reason']
+        data_rows = []
 
         for r in dsp_rows[dsp]:
             tid       = str(r.get('tracking_id', '') or '').strip()
@@ -419,9 +439,13 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             da_id     = mask_id(raw_da) if safe_mode else raw_da
             ship_rsn  = str(r.get('shipment_reason', '') or '').strip()
             audit_rsn = str(r.get('audit_state_reason', '') or '').strip() or '-'
-            lines.append(f'{tid} | {da_id} | {ship_rsn} | {audit_rsn}')
+            data_rows.append([tid, da_id, ship_rsn, audit_rsn])
 
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'POD Opportunities — {dsp} — {first_date}\n'
+            f'{len(data_rows)} reject(s)\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages
 
@@ -461,23 +485,21 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     messages = {}
     for dsp in sorted(dsp_data.keys()):
-        counts        = dsp_data[dsp]
+        counts         = dsp_data[dsp]
         sorted_entries = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        grand_total   = sum(counts.values())
+        grand_total    = sum(counts.values())
 
-        lines = [
-            f'Notify of Arrival — {dsp} — {first_date}',
-            '',
-            intro,
-            '',
-            f'Driver | NOA Count',
-        ]
-
+        headers   = ['Driver', 'NOA Count']
+        data_rows = []
         for tid, count in sorted_entries:
             display = mask_id(tid) if safe_mode else tid
-            lines.append(f'{display} | {count}')
+            data_rows.append([display, str(count)])
+        data_rows.append(['Total', str(grand_total)])
 
-        lines.append(f'\nTotal: {grand_total}')
-        messages[dsp] = '\n'.join(lines)
+        messages[dsp] = (
+            f'Notify of Arrival — {dsp} — {first_date}\n\n'
+            f'{intro}\n\n'
+            + pad_cols(headers, data_rows)
+        )
 
     return messages
