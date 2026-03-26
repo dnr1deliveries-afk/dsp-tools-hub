@@ -72,23 +72,20 @@ def _display_width(text: str) -> int:
 
 def format_table(headers: list, rows: list) -> str:
     """
-    Build a padded pipe table aligned for Slack monospace rendering.
-    Uses display_width() so emoji and wide chars don't break column alignment.
-    Each column is as wide as the widest cell (by rendered width, not byte length).
+    Build a padded pipe table wrapped in Slack code block backticks.
+    Triple backticks force Slack into monospace rendering so columns align visually.
+    Uses _display_width() so emoji/wide chars don't break padding calculations.
     """
     all_rows = [headers] + rows
 
-    # Column widths based on rendered display width, not len()
     col_widths = [
         max(_display_width(str(all_rows[r][c])) for r in range(len(all_rows)))
         for c in range(len(headers))
     ]
 
     def pad_cell(cell, width):
-        s      = str(cell)
-        filled = _display_width(s)
-        # Pad with spaces to reach the target column width
-        return s + ' ' * max(0, width - filled)
+        s = str(cell)
+        return s + ' ' * max(0, width - _display_width(s))
 
     def pad_row(row):
         return '| ' + ' | '.join(pad_cell(cell, col_widths[i])
@@ -96,7 +93,9 @@ def format_table(headers: list, rows: list) -> str:
 
     separator = '| ' + ' | '.join('-' * w for w in col_widths) + ' |'
     lines     = [pad_row(headers), separator] + [pad_row(r) for r in rows]
-    return '\n'.join(lines)
+
+    # Wrap in triple backticks — forces Slack monospace code block so spacing holds
+    return '```\n' + '\n'.join(lines) + '\n```'
 
 def mask_id(raw_id: str) -> str:
     """
