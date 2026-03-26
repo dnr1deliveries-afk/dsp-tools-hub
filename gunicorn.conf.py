@@ -1,7 +1,7 @@
 import os
 
 bind             = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
-workers          = 2
+workers          = 1   # Single worker — in-memory message store is not shared across processes
 threads          = 4
 worker_class     = "gthread"
 timeout          = 120
