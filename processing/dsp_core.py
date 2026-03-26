@@ -556,10 +556,12 @@ def generate_bags_messages(csv_path: str, safe_mode: bool = False) -> dict:
                               if d else datetime.min)
         date_from    = all_dates[0]  if all_dates else ''
         date_to      = all_dates[-1] if all_dates else ''
+        # Only count routes with 2+ bags (singles are excluded from output)
         total_bags   = sum(
             len(bags)
             for date_routes in dates_dict.values()
             for bags in date_routes.values()
+            if len(bags) >= 2
         )
         flagged_count = sum(
             1
@@ -579,8 +581,13 @@ def generate_bags_messages(csv_path: str, safe_mode: bool = False) -> dict:
             data_rows = []
             for route in sorted_routes:
                 count = len(routes_dict[route])
+                if count < 2:
+                    continue  # exclude single-bag routes
                 flag  = ' [!]' if count >= FLAG_THRESHOLD else ''
                 data_rows.append([route, f'{count}{flag}'])
+
+            if not data_rows:
+                continue  # skip date entirely if all routes were singles
 
             sections.append(
                 f'{date_str}\n'
