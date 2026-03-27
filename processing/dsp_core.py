@@ -20,6 +20,10 @@ from datetime import datetime
 # HELPERS
 # ============================================================================
 
+# Slack divider line for message readability
+DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+
+
 def fmt_date(val) -> str:
     if val is None:
         return ''
@@ -96,6 +100,11 @@ def pad_cols(headers: list, rows: list, extra: int = 5) -> str:
     return '\n'.join(lines)
 
 
+def wrap_message(content: str) -> str:
+    """Wrap message content with top and bottom dividers for Slack readability."""
+    return f'{DIVIDER}\n{content}\n{DIVIDER}'
+
+
 # ============================================================================
 # DSP CHASE
 # ============================================================================
@@ -137,7 +146,7 @@ def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         if not sections:
             continue
 
-        messages[dsp] = (
+        content = (
             f'Outstanding Shipments — {dsp}\n'
             f'Updated: {today}\n\n'
             f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
@@ -148,6 +157,7 @@ def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             '3. Update this thread\n\n'
             'Appreciate your support.'
         )
+        messages[dsp] = wrap_message(content)
     return messages
 
 
@@ -232,11 +242,12 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
             [p['tracking_id'], p['related_delivery'], p['pickup_type']]
             for p in pickups
         ]
-        messages[dsp] = (
+        content = (
             f'{dsp} Pickups — {pickup_date}\n'
             f'{len(pickups)} awaiting pickup\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages, pickup_date
 
@@ -283,12 +294,13 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
             except: d1d0  = '-'
             data_rows.append([svc, comp, r1530, r_seq, d1d0])
 
-        messages[dsp] = (
+        content = (
             f'Rostering Accuracy — {dsp} — {first_date}\n\n'
             f'Hi team, please find your rostering accuracy below. '
             f'Provide root cause for any service type below 90%. [!] = below 90%\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
 
@@ -339,12 +351,13 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             [r['route'], r['vin'], r['d1'], r['d0'], r['swap']]
             for r in dsp_rows[dsp]
         ]
-        messages[dsp] = (
+        content = (
             f'Service Type Compliance — {dsp} — {first_date}\n\n'
             f'Hi team, please find below the D-0 vehicle swaps vs D-1 plan. '
             f'Please provide insight on why these vehicles were swapped.\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
 
@@ -394,11 +407,12 @@ def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             call_str = f'{call_ev} ({call_dur})' if call_ev != '-' else f'- ({call_dur})'
             data_rows.append([scan_id, trans_id, reason, call_str, text_ev])
 
-        messages[dsp] = (
+        content = (
             f'Contact Compliance — {dsp} — {first_date}\n'
             f'{len(data_rows)} exception(s)\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
 
@@ -441,11 +455,12 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             audit_rsn = str(r.get('audit_state_reason', '') or '').strip() or '-'
             data_rows.append([tid, da_id, ship_rsn, audit_rsn])
 
-        messages[dsp] = (
+        content = (
             f'POD Opportunities — {dsp} — {first_date}\n'
             f'{len(data_rows)} reject(s)\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
 
@@ -467,7 +482,7 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             continue
         dsp      = str(row.get('DSP', '') or '').strip()
         trans_id = str(row.get('Transporter ID', '') or '').strip()
-        scan_id  = str(r.get('Scannable ID', '') or '').strip()
+        scan_id  = str(row.get('Scannable ID', '') or '').strip()
         if not dsp or not trans_id or not scan_id:
             continue
         if not first_date:
@@ -496,11 +511,12 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             data_rows.append([display, str(count)])
         data_rows.append(['Total', str(grand_total)])
 
-        messages[dsp] = (
+        content = (
             f'Notify of Arrival — {dsp} — {first_date}\n\n'
             f'{intro}\n\n'
             + pad_cols(headers, data_rows)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
 
@@ -597,12 +613,13 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             if flagged_count else ''
         )
 
-        messages[dsp] = (
+        content = (
             f'Unreturned Bags — {dsp} — {date_from} to {date_to}\n'
             f'Total unreturned: {total_bags} bag(s)\n'
             f'{flag_line}'
             f'\n'
             + '\n\n'.join(sections)
         )
+        messages[dsp] = wrap_message(content)
 
     return messages
