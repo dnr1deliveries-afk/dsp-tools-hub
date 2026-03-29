@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+.env
+hub_data
+*.log
+.git
+README.md

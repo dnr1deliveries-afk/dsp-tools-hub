@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}— Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-send-fill text-orange me-2"></i>DSP Tools Hub
+        </h4>
+        <p class="text-muted mb-0">Generate and send per-DSP Slack messages from daily metric CSVs</p>
+    </div>
+</div>
+
+<!-- Tool cards grid -->
+<div class="row g-3">
+    {% for tid, t in tools.items() %}
+    <div class="col-sm-6 col-xl-4">
+        <a href="{{ url_for('tool', tool_id=tid) }}" class="text-decoration-none">
+            <div class="card tool-card h-100 border-0 shadow-sm">
+                <div class="card-body d-flex align-items-start gap-3 p-4">
+                    <div class="tool-icon-wrap rounded-3 p-3 flex-shrink-0">
+                        <i class="bi {{ t.icon }} fs-4 text-orange"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-1">{{ t.emoji }} {{ t.name }}</h6>
+                        <p class="text-muted small mb-0">{{ t.desc }}</p>
+                        {% if t.safe_affected %}
+                        <span class="badge bg-light text-secondary border mt-2" style="font-size:.7rem;">
+                            <i class="bi bi-lock me-1"></i>Safe Mode supported
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-top-0 pt-0 pb-3 px-4">
+                    <small class="text-primary fw-semibold">
+                        Upload &amp; Generate <i class="bi bi-arrow-right ms-1"></i>
+                    </small>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+
+    <!-- Setup card -->
+    <div class="col-sm-6 col-xl-4">
+        <a href="{{ url_for('setup') }}" class="text-decoration-none">
+            <div class="card tool-card h-100 border-0 shadow-sm">
+                <div class="card-body d-flex align-items-start gap-3 p-4">
+                    <div class="tool-icon-wrap rounded-3 p-3 flex-shrink-0">
+                        <i class="bi bi-gear fs-4 text-orange"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-1">⚙️ Setup</h6>
+                        <p class="text-muted small mb-0">Manage webhook URLs for all 12 DSPs (Metrics &amp; OPS channels)</p>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-top-0 pt-0 pb-3 px-4">
+                    <small class="text-primary fw-semibold">
+                        Manage Webhooks <i class="bi bi-arrow-right ms-1"></i>
+                    </small>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Safe Mode info box -->
+<div class="row mt-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-2"><i class="bi bi-shield-lock me-2 text-success"></i>Safe Mode</h6>
+                <p class="text-muted small mb-2">
+                    Toggle <strong>Safe Mode</strong> (top-right) to anonymise driver-identifiable data
+                    before sending messages to DSPs. Driver IDs are replaced with consistent
+                    <code>DA-XXXX</code> tokens — the same driver always gets the same token within a run,
+                    so patterns are still visible without revealing identities.
+                </p>
+                <div class="d-flex gap-4 small">
+                    <span><i class="bi bi-truck text-muted me-1"></i><strong>STC:</strong> VINs anonymised</span>
+                    <span><i class="bi bi-telephone text-muted me-1"></i><strong>CC:</strong> Transporter IDs anonymised</span>
+                    <span><i class="bi bi-camera text-muted me-1"></i><strong>POD:</strong> DA IDs anonymised</span>
+                    <span><i class="bi bi-bell text-muted me-1"></i><strong>NOA:</strong> Transporter IDs anonymised</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,153 @@
+/* DSP Tools Hub — Custom Styles */
+
+/* ── AMZL Colours ─────────────────────────────────────────────────────────── */
+:root {
+    --amzl-dark:    #232F3E;
+    --amzl-blue:    #37475A;
+    --amzl-orange:  #FF9900;
+    --amzl-hover:   #FEBD69;
+    --amzl-green:   #067D62;
+    --amzl-red:     #B12704;
+}
+
+/* ── Navbar ───────────────────────────────────────────────────────────────── */
+.hub-header {
+    background-color: var(--amzl-dark);
+    border-bottom: 3px solid var(--amzl-orange);
+    padding: .5rem 1.5rem;
+}
+
+.hub-header .nav-link {
+    color: #ccc !important;
+    font-size: .88rem;
+    padding: .4rem .75rem;
+    border-radius: 4px;
+    transition: background .15s, color .15s;
+}
+.hub-header .nav-link:hover,
+.hub-header .nav-link.active {
+    color: #fff !important;
+    background: var(--amzl-blue);
+}
+.hub-header .nav-link.active {
+    border-bottom: 2px solid var(--amzl-orange);
+}
+.hub-header .navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: -.3px;
+}
+
+/* ── Colours ──────────────────────────────────────────────────────────────── */
+.text-orange   { color: var(--amzl-orange) !important; }
+.bg-amzl-dark  { background-color: var(--amzl-dark) !important; }
+.bg-amzl-blue  { background-color: var(--amzl-blue) !important; }
+
+/* ── Tool cards (dashboard) ───────────────────────────────────────────────── */
+.tool-card {
+    transition: transform .15s, box-shadow .15s;
+    cursor: pointer;
+}
+.tool-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,.1) !important;
+}
+.tool-icon-wrap {
+    background: #FFF3CD;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Message preview (monospace) ──────────────────────────────────────────── */
+.message-preview {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: .8rem;
+    line-height: 1.6;
+    background: #F8F9FA;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 420px;
+    max-height: 68vh;
+    overflow-y: auto;
+    border: none;
+    color: #212529;
+}
+
+/* ── DSP list buttons ─────────────────────────────────────────────────────── */
+.dsp-btn {
+    border-radius: 0 !important;
+    font-size: .85rem;
+    padding: .5rem .75rem;
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+}
+.dsp-btn.active {
+    background-color: var(--amzl-dark) !important;
+    color: var(--amzl-orange) !important;
+    border-color: #dee2e6 !important;
+}
+.dsp-btn:hover:not(.active) {
+    background-color: #f8f9fa;
+}
+
+/* ── Card headers ─────────────────────────────────────────────────────────── */
+.card-header.bg-amzl-dark {
+    font-size: .85rem;
+}
+
+/* ── Setup table ──────────────────────────────────────────────────────────── */
+.table thead.table-dark th {
+    background-color: var(--amzl-dark);
+    color: #fff;
+    font-size: .82rem;
+    font-weight: 600;
+    border: none;
+}
+.table tbody tr:hover {
+    background-color: #fffbf0;
+}
+
+/* ── Safe mode badge ──────────────────────────────────────────────────────── */
+#safe-mode-badge {
+    font-size: .8rem;
+    padding: .35rem .6rem;
+    transition: background-color .2s;
+}
+
+/* ── Form controls ────────────────────────────────────────────────────────── */
+.form-control-sm.font-monospace {
+    font-size: .75rem;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+.hub-footer {
+    background-color: var(--amzl-dark);
+    border-top: 1px solid var(--amzl-blue);
+    color: #888;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn-warning {
+    background-color: var(--amzl-orange);
+    border-color: var(--amzl-orange);
+    color: #111;
+}
+.btn-warning:hover {
+    background-color: var(--amzl-hover);
+    border-color: var(--amzl-hover);
+    color: #111;
+}
+
+/* ── Send log ─────────────────────────────────────────────────────────────── */
+#sendLogContent {
+    font-size: .72rem;
+    line-height: 1.7;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .message-preview { min-height: 200px; max-height: 50vh; }
+}
