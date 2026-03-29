@@ -1,0 +1,50 @@
+{
+  "ATAG": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DELL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DNZN": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DTTD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DYYL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "HPLM": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "KMIL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "MOLI": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "SLTD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "ULSL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "VILO": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "WACC": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  }
+}
