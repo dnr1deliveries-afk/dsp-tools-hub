@@ -128,6 +128,7 @@ TOOLS = {
 }
 
 # Map tool_id → generate function
+# Map tool_id → generate function
 GENERATORS = {
     'chase':       generate_chase_messages,
     'pickups':     generate_pickup_messages,
@@ -139,16 +140,7 @@ GENERATORS = {
     'bags':        generate_bags_messages,
     'carrier_inv': generate_carrier_inv_messages,
 }
-GENERATORS = {
-    'chase':     generate_chase_messages,
-    'pickups':   generate_pickup_messages,
-    'rostering': generate_rostering_messages,
-    'stc':       generate_stc_messages,
-    'cc':        generate_cc_messages,
-    'pod':       generate_pod_messages,
-    'noa':       generate_noa_messages,
-    'bags':      generate_bags_messages,
-}
+
 
 
 # ── Context processor ─────────────────────────────────────────────────────────
