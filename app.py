@@ -96,8 +96,6 @@ TOOLS = {
                        'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
         'safe_affected': True,
         'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
-    },
-    'pod': {
         'name':      'POD',
         'icon':      'bi-camera-fill',
         'emoji':     '📷',
@@ -106,6 +104,16 @@ TOOLS = {
                        'hint': 'POD_Summary_*.csv', 'required': True}],
         'safe_affected': True,
         'safe_note':  'Safe Mode: DA IDs replaced with anonymised DA-XXXX tokens',
+    },
+    'noa': {
+        'name':      'NOA',
+        'icon':      'bi-bell-fill',
+        'emoji':     '🔔',
+        'desc':      'Notification of Arrival — packages requiring customer notification follow-up',
+        'files':     [{'id': 'csv_file', 'label': 'Exceptions CSV',
+                       'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
+        'safe_affected': True,
+        'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
     },
     'bags': {
         'name':      'Unreturned Bags',
