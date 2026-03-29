@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Web Application v1.0
+DSP Tools Hub — Web Application v1.1
 Flask web interface for the DSP Tools Hub.
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 Deploy: Docker → Render.com
@@ -96,6 +96,8 @@ TOOLS = {
                        'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
         'safe_affected': True,
         'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
+    },
+    'pod': {
         'name':      'POD',
         'icon':      'bi-camera-fill',
         'emoji':     '📷',
@@ -136,7 +138,6 @@ TOOLS = {
 }
 
 # Map tool_id → generate function
-# Map tool_id → generate function
 GENERATORS = {
     'chase':       generate_chase_messages,
     'pickups':     generate_pickup_messages,
@@ -148,7 +149,6 @@ GENERATORS = {
     'bags':        generate_bags_messages,
     'carrier_inv': generate_carrier_inv_messages,
 }
-
 
 
 # ── Context processor ─────────────────────────────────────────────────────────
