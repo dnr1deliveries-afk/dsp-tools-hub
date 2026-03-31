@@ -172,10 +172,13 @@ def _load_route_lookup(search_bytes: bytes) -> dict:
     for row in _open_csv(search_bytes):
         tid   = row.get('Tracking ID', '').strip()
         route = row.get('Route Code', '').strip()
-        if tid and route:
-            routes[tid] = route
-    return routes
-
+    for row in rows:
+        ptype  = row.get('Pick up Type', '').strip()
+        window = row.get('Pick up Start Window', '').strip()
+        if not ptype:
+            # Any start time other than 00:00 is a Home collection
+            # 00:00 = Counter pickup (NOREASON)
+            row['Pick up Type'] = 'NOREASON' if '00:00' in window else ''
 
 def _extract_route_number(route_code: str) -> int:
     if not route_code:
