@@ -213,7 +213,9 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
             # 00:00 = Counter pickup (NOREASON)
             row['Pick up Type'] = 'NOREASON' if '00:00' in window else ''
 
+
     for row in rows:
+        dsp        = row.get('Dsp', '').strip()
         tid        = row.get('trackingId', '').strip()
         related    = row.get('Related Delivery', '').strip()
         ptype_raw  = row.get('Pick up Type', '').strip()
