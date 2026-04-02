@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Web Application v1.1
+DSP Tools Hub — Web Application v1.2
 Flask web interface for the DSP Tools Hub.
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 Deploy: Docker → Render.com
@@ -9,7 +9,9 @@ Repo:   dnr1deliveries-afk/dsp-tools-hub
 import os
 import io
 import logging
+import uuid
 import requests
+from collections import defaultdict
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, session, jsonify
@@ -29,6 +31,7 @@ from storage.webhook_store import (
     load_webhooks, save_webhooks,
     get_webhooks_for_channel, invalidate_cache,
     DEFAULT_WEBHOOKS,
+    load_settings, save_settings, get_payload_key,
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -43,8 +46,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.1'
-BUILD_DATE = '2026-03-29'
+VERSION    = '1.2'
+BUILD_DATE = '2026-04-02'
 
 # ── Tool registry — single source of truth for all 9 tools ───────────────────
 TOOLS = {
@@ -162,13 +165,14 @@ def inject_globals():
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
+_msg_store = defaultdict(dict)
+
+
 def get_messages(tool_id: str) -> dict:
     return session.get(f'messages_{tool_id}', {})
 
 
 def store_messages(tool_id: str, messages: dict):
-    # Flask sessions can't store large dicts directly if they exceed cookie limit.
-    # We store in app-level dict keyed by session ID for reliability.
     sid = session.get('sid')
     if sid:
         _msg_store[sid][tool_id] = messages
@@ -179,12 +183,6 @@ def get_stored_messages(tool_id: str) -> dict:
     if sid and sid in _msg_store:
         return _msg_store[sid].get(tool_id, {})
     return {}
-
-
-# In-memory message store (lightweight — messages are ephemeral per session)
-import uuid
-from collections import defaultdict
-_msg_store = defaultdict(dict)
 
 
 @app.before_request
@@ -226,7 +224,6 @@ def tool(tool_id):
         safe_mode = session.get('safe_mode', False)
 
         try:
-            # Read uploaded files
             csv_file    = request.files.get('csv_file')
             search_file = request.files.get('search_file')
 
@@ -236,7 +233,6 @@ def tool(tool_id):
             file_bytes   = csv_file.read()
             search_bytes = search_file.read() if search_file and search_file.filename else None
 
-            # Call the right generator
             gen = GENERATORS[tool_id]
 
             if tool_id == 'pickups':
@@ -249,7 +245,6 @@ def tool(tool_id):
             else:
                 flash(f'✅ Generated {len(messages)} DSP message(s).', 'success')
 
-            # Store messages in server-side store for the send endpoint
             store_messages(tool_id, messages)
 
         except ValueError as e:
@@ -261,7 +256,6 @@ def tool(tool_id):
             flash(f'❌ Processing error: {error}', 'danger')
 
     else:
-        # GET — restore any previously generated messages for this tool
         messages = get_stored_messages(tool_id)
 
     webhooks      = load_webhooks()
@@ -289,7 +283,7 @@ def send_slack(tool_id):
 
     body    = request.get_json(silent=True) or {}
     channel = body.get('channel', 'metrics').lower()
-    dsps    = body.get('dsps', [])   # list of DSP codes to send to, empty = all
+    dsps    = body.get('dsps', [])
 
     messages = get_stored_messages(tool_id)
     if not messages:
@@ -299,10 +293,12 @@ def send_slack(tool_id):
     if not webhooks:
         return jsonify({'ok': False, 'error': f'No {channel} webhooks configured. Check Setup.'}), 400
 
-    # Filter to requested DSPs (or all if not specified)
     targets = [d for d in (dsps if dsps else sorted(messages.keys())) if d in messages]
     if not targets:
         return jsonify({'ok': False, 'error': 'No matching DSPs to send to.'}), 400
+
+    # Get the configured payload key (e.g., 'message' or 'text')
+    payload_key = get_payload_key()
 
     results = []
     success = 0
@@ -312,7 +308,8 @@ def send_slack(tool_id):
             results.append({'dsp': dsp, 'ok': False, 'msg': 'No webhook URL configured'})
             continue
         try:
-            r = requests.post(url, json={'message': messages[dsp]}, timeout=10)
+            # Use configurable payload key
+            r = requests.post(url, json={payload_key: messages[dsp]}, timeout=10)
             ok = r.status_code in (200, 201, 204)
             if ok:
                 success += 1
@@ -341,13 +338,11 @@ def setup():
         action = request.form.get('action', '')
 
         if action == 'save':
-            # Rebuild webhook dict from posted form fields
             new_data = {}
             raw = request.form.to_dict()
-            # fields named: dsp_ATAG_metrics, dsp_ATAG_ops
             for key, val in raw.items():
                 if key.startswith('dsp_'):
-                    parts = key.split('_', 2)   # ['dsp', 'ATAG', 'metrics']
+                    parts = key.split('_', 2)
                     if len(parts) == 3:
                         _, dsp, channel = parts
                         if dsp not in new_data:
@@ -388,8 +383,20 @@ def setup():
             flash('🔄 Webhooks reset to defaults.', 'success')
             return redirect(url_for('setup'))
 
+        elif action == 'save_settings':
+            payload_key = request.form.get('payload_key', 'message').strip()
+            if not payload_key:
+                payload_key = 'message'
+            settings = load_settings()
+            settings['payload_key'] = payload_key
+            ok = save_settings(settings)
+            flash('✅ Settings saved.' if ok else
+                  '⚠️ Saved locally (GitHub write failed).', 'success' if ok else 'warning')
+            return redirect(url_for('setup'))
+
     webhooks = load_webhooks()
-    return render_template('setup.html', webhooks=webhooks)
+    settings = load_settings()
+    return render_template('setup.html', webhooks=webhooks, settings=settings)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

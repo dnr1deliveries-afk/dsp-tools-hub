@@ -19,6 +19,11 @@ WEBHOOK_PATH = 'hub_data/dsp_webhooks.json'   # path inside the repo
 
 LOCAL_PATH   = os.path.join(os.path.dirname(__file__), '..', 'hub_data', 'dsp_webhooks.json')
 
+# ── Default settings ──────────────────────────────────────────────────────────
+DEFAULT_SETTINGS = {
+    'payload_key': 'message',   # JSON key used in webhook payload: {"message": "..."}
+}
+
 # ── Default webhooks (DNR1 DSPs) ──────────────────────────────────────────────
 # NOTE: Replace these placeholder URLs with your actual Slack webhook URLs
 DEFAULT_WEBHOOKS = {
@@ -149,11 +154,22 @@ def _local_write(data: dict) -> bool:
         return False
 
 
-# ── Public API ─────────────────────────────────────────────────────────────────
+def _load_raw_data() -> dict:
+    """Load raw data from storage (GitHub or local), without cache."""
+    data = _gh_read()
+    if data is None:
+        data = _local_read()
+    if data is None:
+        data = {}
+    return data
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def load_webhooks() -> dict:
     """
-    Load webhook config. Priority: GitHub → local → defaults.
+    Load webhook config (DSPs only, excludes _settings).
+    Priority: GitHub → local → defaults.
     Merges with defaults so new DSPs always appear even if config is stale.
     Result is cached in-process.
     """
@@ -161,16 +177,13 @@ def load_webhooks() -> dict:
     if _cache is not None:
         return _cache
 
-    data = _gh_read()
-    if data is None:
-        data = _local_read()
-    if data is None:
-        data = {}
+    data = _load_raw_data()
 
     # Merge: defaults fill in any missing DSPs but don't overwrite saved values
     merged = {dsp: dict(urls) for dsp, urls in DEFAULT_WEBHOOKS.items()}
     for dsp, urls in data.items():
-        merged[dsp] = urls
+        if dsp != '_settings':  # Skip settings key
+            merged[dsp] = urls
 
     _cache = merged
     return _cache
@@ -179,9 +192,17 @@ def load_webhooks() -> dict:
 def save_webhooks(data: dict) -> bool:
     """Save webhook config to GitHub (primary) and local (backup). Invalidates cache."""
     global _cache
+    
+    # Preserve existing settings when saving webhooks
+    existing = _load_raw_data()
+    if '_settings' in existing:
+        data['_settings'] = existing['_settings']
+    
     ok = _gh_write(data)
     _local_write(data)   # always write locally as backup
-    _cache = data        # update cache immediately
+    
+    # Update cache (excluding _settings)
+    _cache = {k: v for k, v in data.items() if k != '_settings'}
     return ok
 
 
@@ -193,10 +214,39 @@ def get_webhooks_for_channel(channel: str) -> dict:
     key  = channel.lower()
     data = load_webhooks()
     return {dsp: urls[key] for dsp, urls in data.items()
-            if urls.get(key, '').strip()}
+            if isinstance(urls, dict) and urls.get(key, '').strip()}
 
 
 def invalidate_cache():
     """Force reload on next load_webhooks() call."""
     global _cache
     _cache = None
+
+
+# ── Settings API ──────────────────────────────────────────────────────────────
+
+def load_settings() -> dict:
+    """Load global settings. Returns defaults merged with saved values."""
+    data = _load_raw_data()
+    saved_settings = data.get('_settings', {})
+    
+    # Merge with defaults
+    settings = dict(DEFAULT_SETTINGS)
+    settings.update(saved_settings)
+    return settings
+
+
+def save_settings(settings: dict) -> bool:
+    """Save global settings to storage."""
+    data = _load_raw_data()
+    data['_settings'] = settings
+    
+    ok = _gh_write(data)
+    _local_write(data)
+    return ok
+
+
+def get_payload_key() -> str:
+    """Get the JSON key used for webhook payloads (default: 'message')."""
+    settings = load_settings()
+    return settings.get('payload_key', 'message')
