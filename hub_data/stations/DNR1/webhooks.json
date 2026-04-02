@@ -18,5 +18,9 @@
   "DYYL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "HPLM": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
