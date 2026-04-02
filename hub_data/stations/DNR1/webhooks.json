@@ -38,5 +38,9 @@
   "ULSL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "VILO": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
