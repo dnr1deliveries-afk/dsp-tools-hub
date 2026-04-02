@@ -22,5 +22,9 @@
   "HPLM": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "KMIL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
