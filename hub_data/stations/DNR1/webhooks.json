@@ -34,5 +34,9 @@
   "SLTD": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "ULSL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
