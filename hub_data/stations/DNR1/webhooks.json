@@ -14,5 +14,9 @@
   "DTTD": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DYYL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
