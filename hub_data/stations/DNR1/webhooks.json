@@ -10,5 +10,9 @@
   "DNZN": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "DTTD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
