@@ -10,7 +10,6 @@ separation between fields.
 
 import csv
 import io
-import hashlib
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -45,17 +44,18 @@ def fmt_pct(val) -> str:
         return f'{float(val):.0%}'
     except (ValueError, TypeError):
         return str(val)
-
-
 def mask_id(raw_id: str) -> str:
     """
-    Deterministic 4-char hex token. Same input = same token within a run.
-    Example: 'AB12CDE' -> 'DA-4F2A'
+    Anonymise driver ID using last 4 characters.
+    Example: 'A2E1ZLJ8TBT4Q1' -> 'DA-T4Q1'
+             'ABCD' -> 'DA-ABCD'
+             'AB' -> 'DA-AB'
     """
     if not raw_id:
         return 'DA-????'
-    h = hashlib.md5(raw_id.encode()).hexdigest()[:4].upper()
-    return f'DA-{h}'
+    # Use last 4 chars (or full ID if shorter)
+    suffix = raw_id.strip()[-4:].upper()
+    return f'DA-{suffix}'
 
 
 def _open_csv(file_bytes: bytes):
