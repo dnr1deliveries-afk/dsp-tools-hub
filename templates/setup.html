@@ -4,16 +4,20 @@
 {% block content %}
 <div class="row mb-3 align-items-center">
     <div class="col">
-        <h5 class="fw-bold mb-0"><i class="bi bi-gear text-orange me-2"></i>Webhook Setup</h5>
-        <p class="text-muted small mb-0">Manage Slack webhook URLs for all DSPs. Changes are saved to GitHub and shared across all users.</p>
+        <h5 class="fw-bold mb-0">
+            <i class="bi bi-gear text-orange me-2"></i>Setup — {{ station }}
+        </h5>
+        <p class="text-muted small mb-0">
+            Manage Slack webhook URLs for {{ station }}. Each station has its own configuration.
+        </p>
     </div>
     <div class="col-auto d-flex gap-2">
-        <!-- Reset to defaults -->
+        <!-- Clear all webhooks -->
         <form method="POST">
-            <input type="hidden" name="action" value="reset">
-            <button type="submit" class="btn btn-sm btn-outline-secondary"
-                    onclick="return confirm('Reset all webhooks to factory defaults? Manual edits will be overwritten.')">
-                <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Defaults
+            <input type="hidden" name="action" value="clear_all">
+            <button type="submit" class="btn btn-sm btn-outline-danger"
+                    onclick="return confirm('Clear ALL webhooks for {{ station }}? This cannot be undone.')">
+                <i class="bi bi-trash3 me-1"></i>Clear All
             </button>
         </form>
         <!-- Save all -->
@@ -26,7 +30,7 @@
 <!-- Global Settings card -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-amzl-dark text-white fw-bold py-2">
-        <i class="bi bi-sliders me-2"></i>Global Settings
+        <i class="bi bi-sliders me-2"></i>Station Settings — {{ station }}
     </div>
     <div class="card-body p-3">
         <form method="POST" class="row g-2 align-items-end">
@@ -61,7 +65,8 @@
 <!-- Webhook table -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-amzl-dark text-white fw-bold py-2">
-        <i class="bi bi-link-45deg me-2"></i>DSP Webhooks
+        <i class="bi bi-link-45deg me-2"></i>DSP Webhooks — {{ station }}
+        <span class="badge bg-warning text-dark ms-2">{{ webhooks | length }} DSP(s)</span>
     </div>
     <div class="card-body p-0">
         <form method="POST" id="webhookForm">
@@ -109,7 +114,8 @@
                         {% else %}
                         <tr>
                             <td colspan="4" class="text-center text-muted py-4">
-                                No DSPs configured. Add one below or reset to defaults.
+                                <i class="bi bi-inbox display-6 d-block mb-2 opacity-25"></i>
+                                No DSPs configured for {{ station }}. Add one below.
                             </td>
                         </tr>
                         {% endfor %}

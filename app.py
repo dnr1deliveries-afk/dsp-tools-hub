@@ -1,7 +1,7 @@
 """
-DSP Tools Hub — Web Application v1.2
+DSP Tools Hub — Web Application v1.3
 Flask web interface for the DSP Tools Hub.
-Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
+Multi-station support with per-station webhook configuration.
 Deploy: Docker → Render.com
 Repo:   dnr1deliveries-afk/dsp-tools-hub
 """
@@ -27,11 +27,11 @@ from processing.dsp_core import (
     generate_bags_messages,
     generate_carrier_inv_messages,
 )
-from storage.webhook_store import (
-    load_webhooks, save_webhooks,
-    get_webhooks_for_channel, invalidate_cache,
-    DEFAULT_WEBHOOKS,
-    load_settings, save_settings, get_payload_key,
+from storage.station_store import (
+    load_station_webhooks, save_station_webhooks,
+    load_station_settings, save_station_settings,
+    get_webhooks_for_channel, get_payload_key,
+    list_stations,
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.2'
+VERSION    = '1.3'
 BUILD_DATE = '2026-04-02'
 
 # ── Tool registry — single source of truth for all 9 tools ───────────────────
@@ -157,10 +157,12 @@ GENERATORS = {
 # ── Context processor ─────────────────────────────────────────────────────────
 @app.context_processor
 def inject_globals():
+    station = session.get('station_code', '')
     return {
         'version':   VERSION,
         'tools':     TOOLS,
         'safe_mode': session.get('safe_mode', False),
+        'station':   station,
     }
 
 
@@ -168,8 +170,9 @@ def inject_globals():
 _msg_store = defaultdict(dict)
 
 
-def get_messages(tool_id: str) -> dict:
-    return session.get(f'messages_{tool_id}', {})
+def get_station() -> str:
+    """Get current station code from session."""
+    return session.get('station_code', '').upper()
 
 
 def store_messages(tool_id: str, messages: dict):
@@ -199,6 +202,23 @@ def index():
     return render_template('index.html')
 
 
+# ── Station selection ─────────────────────────────────────────────────────────
+@app.route('/set-station', methods=['POST'])
+def set_station():
+    """Set station code from welcome modal."""
+    raw_station = request.form.get('station_code', '').strip().upper()
+    
+    if raw_station:
+        session['station_code'] = raw_station
+        logger.info(f"Station set to: {raw_station}")
+        flash(f'✅ Station set to {raw_station}', 'success')
+    
+    next_page = request.form.get('next', '/')
+    if not next_page.startswith('/'):
+        next_page = '/'
+    return redirect(next_page)
+
+
 # ── Safe Mode toggle (AJAX) ───────────────────────────────────────────────────
 @app.route('/set-safe-mode', methods=['POST'])
 def set_safe_mode():
@@ -215,6 +235,11 @@ def tool(tool_id):
         return render_template('error.html', code=404,
                                title='Tool Not Found',
                                message=f'No tool named "{tool_id}".'), 404
+
+    station = get_station()
+    if not station:
+        flash('⚠️ Please select a station first.', 'warning')
+        return redirect(url_for('index'))
 
     tool_meta = TOOLS[tool_id]
     messages  = {}
@@ -258,7 +283,7 @@ def tool(tool_id):
     else:
         messages = get_stored_messages(tool_id)
 
-    webhooks      = load_webhooks()
+    webhooks      = load_station_webhooks(station)
     dsp_list      = sorted(messages.keys())
     first_message = messages.get(dsp_list[0], '') if dsp_list else ''
 
@@ -281,6 +306,10 @@ def send_slack(tool_id):
     if tool_id not in TOOLS:
         return jsonify({'ok': False, 'error': f'Unknown tool: {tool_id}'}), 400
 
+    station = get_station()
+    if not station:
+        return jsonify({'ok': False, 'error': 'No station selected.'}), 400
+
     body    = request.get_json(silent=True) or {}
     channel = body.get('channel', 'metrics').lower()
     dsps    = body.get('dsps', [])
@@ -289,16 +318,15 @@ def send_slack(tool_id):
     if not messages:
         return jsonify({'ok': False, 'error': 'No messages found. Generate messages first.'}), 400
 
-    webhooks = get_webhooks_for_channel(channel)
+    webhooks = get_webhooks_for_channel(station, channel)
     if not webhooks:
-        return jsonify({'ok': False, 'error': f'No {channel} webhooks configured. Check Setup.'}), 400
+        return jsonify({'ok': False, 'error': f'No {channel} webhooks configured for {station}. Check Setup.'}), 400
 
     targets = [d for d in (dsps if dsps else sorted(messages.keys())) if d in messages]
     if not targets:
         return jsonify({'ok': False, 'error': 'No matching DSPs to send to.'}), 400
 
-    # Get the configured payload key (e.g., 'message' or 'text')
-    payload_key = get_payload_key()
+    payload_key = get_payload_key(station)
 
     results = []
     success = 0
@@ -308,7 +336,6 @@ def send_slack(tool_id):
             results.append({'dsp': dsp, 'ok': False, 'msg': 'No webhook URL configured'})
             continue
         try:
-            # Use configurable payload key
             r = requests.post(url, json={payload_key: messages[dsp]}, timeout=10)
             ok = r.status_code in (200, 201, 204)
             if ok:
@@ -326,6 +353,7 @@ def send_slack(tool_id):
         'sent':    success,
         'total':   len(targets),
         'channel': channel,
+        'station': station,
         'results': results,
     })
 
@@ -334,6 +362,11 @@ def send_slack(tool_id):
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
+    station = get_station()
+    if not station:
+        flash('⚠️ Please select a station first.', 'warning')
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         action = request.form.get('action', '')
 
@@ -348,9 +381,9 @@ def setup():
                         if dsp not in new_data:
                             new_data[dsp] = {'metrics': '', 'ops': ''}
                         new_data[dsp][channel] = val.strip()
-            ok = save_webhooks(new_data)
-            flash('✅ Webhooks saved.' if ok else
-                  '⚠️ Saved locally (GitHub write failed — check GITHUB_TOKEN).', 'success' if ok else 'warning')
+            ok = save_station_webhooks(station, new_data)
+            flash(f'✅ Webhooks saved for {station}.' if ok else
+                  '⚠️ Saved locally (GitHub write failed).', 'success' if ok else 'warning')
             return redirect(url_for('setup'))
 
         elif action == 'add':
@@ -360,42 +393,39 @@ def setup():
             if not dsp:
                 flash('DSP code is required.', 'danger')
             else:
-                data = load_webhooks()
+                data = load_station_webhooks(station)
                 data[dsp] = {'metrics': metrics, 'ops': ops}
-                save_webhooks(data)
-                invalidate_cache()
+                save_station_webhooks(station, data)
                 flash(f'✅ {dsp} added.', 'success')
             return redirect(url_for('setup'))
 
         elif action == 'delete':
             dsp  = request.form.get('dsp', '').strip().upper()
-            data = load_webhooks()
+            data = load_station_webhooks(station)
             if dsp in data:
                 del data[dsp]
-                save_webhooks(data)
-                invalidate_cache()
+                save_station_webhooks(station, data)
                 flash(f'🗑️ {dsp} removed.', 'warning')
             return redirect(url_for('setup'))
 
-        elif action == 'reset':
-            save_webhooks({dsp: dict(urls) for dsp, urls in DEFAULT_WEBHOOKS.items()})
-            invalidate_cache()
-            flash('🔄 Webhooks reset to defaults.', 'success')
+        elif action == 'clear_all':
+            save_station_webhooks(station, {})
+            flash(f'🗑️ All webhooks cleared for {station}.', 'warning')
             return redirect(url_for('setup'))
 
         elif action == 'save_settings':
             payload_key = request.form.get('payload_key', 'message').strip()
             if not payload_key:
                 payload_key = 'message'
-            settings = load_settings()
+            settings = load_station_settings(station)
             settings['payload_key'] = payload_key
-            ok = save_settings(settings)
+            ok = save_station_settings(station, settings)
             flash('✅ Settings saved.' if ok else
                   '⚠️ Saved locally (GitHub write failed).', 'success' if ok else 'warning')
             return redirect(url_for('setup'))
 
-    webhooks = load_webhooks()
-    settings = load_settings()
+    webhooks = load_station_webhooks(station)
+    settings = load_station_settings(station)
     return render_template('setup.html', webhooks=webhooks, settings=settings)
 
 

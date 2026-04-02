@@ -18,8 +18,20 @@
             <small class="text-muted ms-1 fw-normal" style="font-size:.75rem;">v{{ version }}</small>
         </a>
 
-        <!-- Safe Mode toggle — top right -->
+        <!-- Station badge + Safe Mode toggle — top right -->
         <div class="d-flex align-items-center order-lg-last me-2 gap-2">
+            <!-- Station badge (clickable to change) -->
+            {% if station %}
+            <span class="badge bg-warning text-dark d-flex align-items-center gap-1 station-badge" 
+                  style="font-size:.85rem; cursor:pointer;"
+                  data-bs-toggle="modal" data-bs-target="#stationModal"
+                  title="Click to change station">
+                <i class="bi bi-building"></i>
+                <span>{{ station }}</span>
+            </span>
+            {% endif %}
+            
+            <!-- Safe Mode toggle -->
             <span id="safe-mode-badge"
                   class="badge {% if safe_mode %}bg-success{% else %}bg-secondary{% endif %} d-flex align-items-center gap-1"
                   style="font-size:.8rem; cursor:default;">
@@ -88,13 +100,96 @@
 <!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
 <footer class="hub-footer text-center py-2 mt-4">
     <small class="text-muted">
-        DSP Tools Hub v{{ version }} &nbsp;|&nbsp; by keenlys &nbsp;|&nbsp; DNR1 Delivery Station
+        DSP Tools Hub v{{ version }} &nbsp;|&nbsp; by keenlys
+        {% if station %}&nbsp;|&nbsp; {{ station }} Delivery Station{% endif %}
     </small>
 </footer>
 
+<!-- ── STATION SELECTION MODAL ─────────────────────────────────────────────── -->
+<div class="modal fade" id="stationModal" tabindex="-1"
+     data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="stationModalLabel">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-amzl-dark text-white border-0">
+                <h5 class="modal-title fw-bold" id="stationModalLabel">
+                    <i class="bi bi-send-fill me-2 text-orange"></i>Welcome to DSP Tools Hub
+                </h5>
+            </div>
+            <form method="POST" action="/set-station" id="stationForm">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <div class="modal-body py-4">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-building display-4 text-orange opacity-75"></i>
+                    </div>
+                    
+                    <div>
+                        <label class="form-label fw-bold text-dark mb-2">
+                            <i class="bi bi-building me-1 text-orange"></i>Station Code
+                        </label>
+                        <input type="text"
+                               id="stationInput"
+                               name="station_code"
+                               class="form-control form-control-lg text-center font-monospace fw-bold"
+                               placeholder="e.g. DNR1"
+                               value="{{ station or '' }}"
+                               maxlength="6"
+                               autocomplete="off"
+                               required>
+                        <div class="form-text text-center">
+                            Enter your delivery station code (e.g. DNR1, DRM3, DCF1)
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    {% if station %}
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    {% endif %}
+                    <button type="submit" class="btn btn-warning fw-bold {% if not station %}w-100{% endif %} btn-lg">
+                        <i class="bi bi-arrow-right-circle me-2"></i>Continue
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- ── SAFE MODE TOGGLE LOGIC ─────────────────────────────────────────────── -->
+<!-- ── STATION MODAL LOGIC ─────────────────────────────────────────────────── -->
+<script>
+(function () {
+    const currentStation = {{ (station or '') | tojson }};
+    const storedSession  = sessionStorage.getItem('hub_station');
+
+    // Show modal if no station set
+    const needsSetup = !currentStation;
+
+    if (needsSetup) {
+        const modal = new bootstrap.Modal(document.getElementById('stationModal'));
+        modal.show();
+        document.getElementById('stationInput').focus();
+    }
+
+    // Uppercase station input as user types
+    document.getElementById('stationInput').addEventListener('input', function () {
+        const pos = this.selectionStart;
+        this.value = this.value.toUpperCase();
+        this.setSelectionRange(pos, pos);
+    });
+
+    // Store in sessionStorage on submit
+    document.getElementById('stationForm').addEventListener('submit', function () {
+        const stationVal = document.getElementById('stationInput').value.trim().toUpperCase();
+        if (stationVal) {
+            sessionStorage.setItem('hub_station', stationVal);
+        }
+    });
+})();
+</script>
+
+<!-- ── SAFE MODE TOGGLE LOGIC ──────────────────────────────────────────────── -->
 <script>
 (function () {
     const toggle = document.getElementById('safeModeToggle');
@@ -110,7 +205,6 @@
         })
         .then(r => r.json())
         .then(() => {
-            // Update badge
             badge.className = 'badge ' + (safe ? 'bg-success' : 'bg-secondary') +
                               ' d-flex align-items-center gap-1';
             label.textContent = safe ? 'Safe Mode' : 'Full Mode';

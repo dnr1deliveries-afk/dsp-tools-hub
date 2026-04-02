@@ -1,7 +1,16 @@
-# DSP Tools Hub — Web v1.1
+# DSP Tools Hub — Web v1.3
 
 Web version of the DSP Tools Hub desktop app.
+**Multi-station support** — each station has its own webhook configuration.
+
 Flask + Bootstrap 5 · Docker · Render.com
+
+## Features
+
+- **9 Processing Tools** — Generate Slack messages from metric CSVs
+- **Multi-Station Support** — Station selection on first visit, per-station webhooks
+- **Safe Mode** — Anonymise driver IDs (last 4 chars) before sending
+- **Dual Storage** — GitHub (persists across deploys) + local fallback
 
 ## Tools
 
@@ -43,7 +52,31 @@ python app.py
 | `FLASK_DEBUG` | No | `true` for dev |
 | `LOG_LEVEL` | No | `INFO` / `DEBUG` |
 
+## Storage Layout
+
+```
+hub_data/
+└── stations/
+    ├── DNR1/
+    │   ├── webhooks.json    # DSP webhook URLs
+    │   └── settings.json    # Payload key, etc.
+    ├── DRM3/
+    │   ├── webhooks.json
+    │   └── settings.json
+    └── ...
+```
+
 ## Changelog
+
+### v1.3 (2026-04-02)
+- **Multi-station support** — station selection modal on first visit
+- Per-station webhook storage (`hub_data/stations/{STATION}/`)
+- Station badge in navbar (click to change)
+- Configurable webhook payload key per station
+
+### v1.2 (2026-04-02)
+- Added configurable webhook payload key setting
+- Safe Mode tokens now use last 4 chars of driver ID
 
 ### v1.1 (2026-03-29)
 - Added **Carrier Investigations** tool (DNR = Delivered Not Received)
