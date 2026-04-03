@@ -14,5 +14,9 @@
   "ELOX": {
     "metrics": "https://us-east-1.quicksight.aws.amazon.com/sn/account/amzlbiaquicksight/dashboards/303366a2-c175-47c1-99fc-76ffa9cd83d1?isauthcode=true#",
     "ops": "https://amazon.enterprise.slack.com/archives/C0AKR33716V"
+  },
+  "SJAL": {
+    "metrics": "https://us-east-1.quicksight.aws.amazon.com/sn/account/amzlbiaquicksight/dashboards/303366a2-c175-47c1-99fc-76ffa9cd83d1?isauthcode=true#",
+    "ops": "https://amazon.enterprise.slack.com/archives/C0AKR3AGSJD"
   }
 }
