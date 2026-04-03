@@ -38,5 +38,9 @@
   "NOVD": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "PPRL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
