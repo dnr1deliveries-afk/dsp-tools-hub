@@ -14,5 +14,9 @@
   "ELOX": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "SJAL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
