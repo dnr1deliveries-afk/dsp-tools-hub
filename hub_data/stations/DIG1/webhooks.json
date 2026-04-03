@@ -34,5 +34,9 @@
   "LEBL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "NOVD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
