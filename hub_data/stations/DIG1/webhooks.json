@@ -6,5 +6,9 @@
   "ATAG": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "BDLT": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
