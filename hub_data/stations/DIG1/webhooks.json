@@ -22,5 +22,9 @@
   "FAPD": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "FUKP": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
