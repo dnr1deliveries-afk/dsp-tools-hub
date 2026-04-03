@@ -22,5 +22,9 @@
   "TKPL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "TLOL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
