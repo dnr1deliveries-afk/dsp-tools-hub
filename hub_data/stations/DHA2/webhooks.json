@@ -18,5 +18,9 @@
   "CLBT": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "GEHL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
