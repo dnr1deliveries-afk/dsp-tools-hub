@@ -10,5 +10,9 @@
   "DYYL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "ELOX": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
