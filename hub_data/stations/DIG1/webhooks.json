@@ -10,5 +10,9 @@
   "BDLT": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "BRCL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
