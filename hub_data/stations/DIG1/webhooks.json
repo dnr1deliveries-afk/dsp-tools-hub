@@ -54,5 +54,9 @@
   "TLOL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "TSTT": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
