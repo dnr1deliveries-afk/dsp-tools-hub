@@ -46,5 +46,9 @@
   "RTLS": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "SBL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
