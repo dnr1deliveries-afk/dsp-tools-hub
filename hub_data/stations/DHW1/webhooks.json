@@ -1,7 +1,7 @@
 {
   "ADWA": {
-    "metrics": "https://us-east-1.quicksight.aws.amazon.com/sn/account/amzlbiaquicksight/dashboards/303366a2-c175-47c1-99fc-76ffa9cd83d1?isauthcode=true#",
-    "ops": "https://amazon.enterprise.slack.com/archives/C0AK6GJJQDU"
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   },
   "BRCL": {
     "metrics": "https://us-east-1.quicksight.aws.amazon.com/sn/account/amzlbiaquicksight/dashboards/303366a2-c175-47c1-99fc-76ffa9cd83d1?isauthcode=true#",
