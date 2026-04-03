@@ -1,7 +1,7 @@
 {
   "ATAG": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "DELL": {
     "metrics": "https://hooks.slack.com/triggers/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",
