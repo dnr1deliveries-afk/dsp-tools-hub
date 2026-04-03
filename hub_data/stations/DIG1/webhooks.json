@@ -18,5 +18,9 @@
   "CWTL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "FAPD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
