@@ -30,5 +30,9 @@
   "GEHL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "LEBL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
