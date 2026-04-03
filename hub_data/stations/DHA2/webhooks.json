@@ -26,5 +26,9 @@
   "MMLN": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "RPTD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
