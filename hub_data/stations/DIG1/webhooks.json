@@ -42,5 +42,9 @@
   "PPRL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "RTLS": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
