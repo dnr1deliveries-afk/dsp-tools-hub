@@ -2,5 +2,9 @@
   "ASCL": {
     "metrics": "",
     "ops": ""
+  },
+  "CTCE": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
