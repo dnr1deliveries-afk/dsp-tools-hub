@@ -26,5 +26,9 @@
   "SJAL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "TLOL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
