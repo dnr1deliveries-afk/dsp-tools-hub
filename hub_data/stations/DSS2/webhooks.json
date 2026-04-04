@@ -14,5 +14,9 @@
   "LUQS": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "SKTS": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
