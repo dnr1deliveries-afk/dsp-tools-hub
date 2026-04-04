@@ -18,5 +18,9 @@
   "SKTS": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "SKSO": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
