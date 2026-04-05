@@ -1,10 +1,10 @@
 {
-  "QRIS": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
-  },
   "ASCL": {
     "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
+  },
+  "QRIS": {
+    "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
   }
 }
