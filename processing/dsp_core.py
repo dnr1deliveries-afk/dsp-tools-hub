@@ -753,11 +753,11 @@ def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     for dsp in sorted(dsp_data.keys()):
         vehicles = dsp_data[dsp]
         
-        # Sort vehicles by VIN for consistency
-        vehicles_sorted = sorted(vehicles, key=lambda x: x['vin'])
+        # Sort vehicles by VRN for consistency
+        vehicles_sorted = sorted(vehicles, key=lambda x: x['vrn'])
         
-        headers = ['DSP Name', 'VIN']
-        data_rows = [[dsp, v['vin']] for v in vehicles_sorted]
+        headers = ['DSP Name', 'VRN', 'VIN']
+        data_rows = [[dsp, v['vrn'], v['vin']] for v in vehicles_sorted]
 
         intro = (
             'Hi team,\n'
