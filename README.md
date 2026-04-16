@@ -1,4 +1,4 @@
-# DSP Tools Hub — Web v1.3
+# DSP Tools Hub — Web v1.4
 
 Web version of the DSP Tools Hub desktop app.
 **Multi-station support** — each station has its own webhook configuration.
@@ -7,7 +7,7 @@ Flask + Bootstrap 5 · Docker · Render.com
 
 ## Features
 
-- **9 Processing Tools** — Generate Slack messages from metric CSVs
+- **10 Processing Tools** — Generate Slack messages from metric CSVs
 - **Multi-Station Support** — Station selection on first visit, per-station webhooks
 - **Safe Mode** — Anonymise driver IDs (last 4 chars) before sending
 - **Dual Storage** — GitHub (persists across deploys) + local fallback
@@ -25,6 +25,7 @@ Flask + Bootstrap 5 · Docker · Render.com
 | 🔔 NOA | `Exceptions_Based_Dee_*.csv` |
 | 👜 Bags | `List_of_not_returned_*.csv` |
 | 🕵️ Carrier Investigations | `Carrier_Investigatio_*.csv` |
+| 🛡️ VSA | `Dive Deep Data Total Expected VSA Audits (Cycle)*.csv` |
 
 ## Run locally
 
@@ -67,6 +68,10 @@ hub_data/
 ```
 
 ## Changelog
+
+### v1.4 (2026-06-14)
+- Added **VSA (Vehicle Safety Audit)** tool — bi-weekly cycle, filters `inspection_passed = N`
+- Safe Mode: VINs anonymised to `VIN-XXXX` tokens
 
 ### v1.3 (2026-04-02)
 - **Multi-station support** — station selection modal on first visit

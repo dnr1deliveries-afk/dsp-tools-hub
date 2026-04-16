@@ -686,3 +686,93 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
         messages[dsp] = wrap_message(content)
 
     return messages
+
+
+
+# ============================================================================
+# VSA (Vehicle Safety Audit)
+# ============================================================================
+
+def mask_vin(raw_vin: str) -> str:
+    """
+    Anonymise VIN using last 4 characters.
+    Example: 'WF0XXXBDFXBJ16285' -> 'VIN-6285'
+             'ABCD' -> 'VIN-ABCD'
+    """
+    if not raw_vin:
+        return 'VIN-????'
+    suffix = raw_vin.strip()[-4:].upper()
+    return f'VIN-{suffix}'
+
+
+def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+    """
+    Input: Dive Deep Data Total Expected VSA Audits (Cycle)*.csv
+    
+    Filters rows where inspection_passed = 'N' (vehicles pending VSA this cycle).
+    Groups by DSP and outputs VIN list in markdown table format.
+    
+    Safe mode: VIN replaced with anonymised VIN-XXXX token.
+    
+    Columns used:
+        dsp, vin, vrns, inspection_passed, status
+    
+    Output: One message per DSP with list of vehicles pending VSA.
+    """
+    # dsp_data[dsp] = list of vehicle dicts
+    dsp_data = defaultdict(list)
+
+    for row in _open_csv(file_bytes):
+        # Only include rows where inspection_passed = 'N'
+        inspection = str(row.get('inspection_passed', '') or '').strip().upper()
+        if inspection != 'N':
+            continue
+        
+        dsp = str(row.get('dsp', '') or '').strip().upper()
+        if not dsp:
+            continue
+        
+        raw_vin = str(row.get('vin', '') or '').strip()
+        vrn = str(row.get('vrns', '') or '').strip()
+        
+        dsp_data[dsp].append({
+            'vin': mask_vin(raw_vin) if safe_mode else raw_vin,
+            'vrn': vrn,
+        })
+
+    if not dsp_data:
+        raise ValueError(
+            "No vehicles pending VSA found (inspection_passed = 'N').\n"
+            "Check the file contains 'dsp', 'vin', and 'inspection_passed' columns."
+        )
+
+    # Calculate total vehicles pending
+    total_pending = sum(len(vehicles) for vehicles in dsp_data.values())
+
+    messages = {}
+    for dsp in sorted(dsp_data.keys()):
+        vehicles = dsp_data[dsp]
+        
+        # Sort vehicles by VIN for consistency
+        vehicles_sorted = sorted(vehicles, key=lambda x: x['vin'])
+        
+        headers = ['DSP Name', 'VIN']
+        data_rows = [[dsp, v['vin']] for v in vehicles_sorted]
+
+        intro = (
+            'Hi team,\n'
+            'The following list of Vans are still pending a VSA for this cycle.\n'
+            'Please reply to this message and let us know if or when the Van will be next used.\n'
+            'Thank you'
+        )
+
+        content = (
+            f'@here\n'
+            f'## Bi-Weekly VSA Audits ##\n\n'
+            f'{intro}\n\n'
+            f'{dsp} — {len(vehicles)} vehicle(s) pending\n\n'
+            + pad_cols(headers, data_rows)
+        )
+        messages[dsp] = wrap_message(content)
+
+    return messages

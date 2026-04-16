@@ -26,6 +26,7 @@ from processing.dsp_core import (
     generate_noa_messages,
     generate_bags_messages,
     generate_carrier_inv_messages,
+    generate_vsa_messages,
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -46,8 +47,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.3'
-BUILD_DATE = '2026-04-02'
+VERSION    = '1.4'
+BUILD_DATE = '2026-06-14'
 
 # ── Tool registry — single source of truth for all 9 tools ───────────────────
 TOOLS = {
@@ -138,6 +139,16 @@ TOOLS = {
                        'hint': 'Carrier_Investigatio_*.csv', 'required': True}],
         'safe_affected': False,
     },
+    'vsa': {
+        'name':      'VSA',
+        'icon':      'bi-shield-check',
+        'emoji':     '🛡️',
+        'desc':      'Vehicle Safety Audit — bi-weekly cycle, vehicles pending inspection (inspection_passed = N)',
+        'files':     [{'id': 'csv_file', 'label': 'VSA Deep Dive CSV',
+                       'hint': 'Dive Deep Data Total Expected VSA Audits (Cycle)*.csv', 'required': True}],
+        'safe_affected': True,
+        'safe_note':  'Safe Mode: VINs replaced with anonymised VIN-XXXX tokens',
+    },
 }
 
 # Map tool_id → generate function
@@ -151,6 +162,7 @@ GENERATORS = {
     'noa':         generate_noa_messages,
     'bags':        generate_bags_messages,
     'carrier_inv': generate_carrier_inv_messages,
+    'vsa':         generate_vsa_messages,
 }
 
 
