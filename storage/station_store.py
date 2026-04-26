@@ -7,6 +7,8 @@ Storage layout:
     hub_data/stations/{STATION_CODE}/settings.json
 
 User preferences (station choice) stored in session.
+
+v1.5 - Public repo reads don't require token (only writes do)
 """
 
 import os
@@ -19,7 +21,7 @@ logger = logging.getLogger('hub.station')
 
 # ── GitHub config from env vars ───────────────────────────────────────────────
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
-GITHUB_REPO  = os.environ.get('GITHUB_REPO', '')
+GITHUB_REPO  = os.environ.get('GITHUB_REPO', 'dnr1deliveries-afk/dsp-tools-hub')
 
 LOCAL_BASE = os.path.join(os.path.dirname(__file__), '..', 'hub_data', 'stations')
 
@@ -34,11 +36,12 @@ DEFAULT_WEBHOOKS = {}  # Empty - each station configures their own
 
 # ── GitHub helpers ────────────────────────────────────────────────────────────
 
-def _gh_headers():
-    return {
-        'Authorization': f'token {GITHUB_TOKEN}',
-        'Accept': 'application/vnd.github.v3+json',
-    }
+def _gh_headers(auth_required: bool = False):
+    """Get headers for GitHub API. Auth only needed for writes."""
+    headers = {'Accept': 'application/vnd.github.v3+json'}
+    if auth_required and GITHUB_TOKEN:
+        headers['Authorization'] = f'token {GITHUB_TOKEN}'
+    return headers
 
 
 def _gh_path(station_code: str, filename: str) -> str:
@@ -47,30 +50,34 @@ def _gh_path(station_code: str, filename: str) -> str:
 
 
 def _gh_read(station_code: str, filename: str) -> dict | None:
-    """Read JSON file from GitHub for a station."""
-    if not GITHUB_TOKEN or not GITHUB_REPO:
+    """Read JSON file from GitHub for a station. No auth needed for public repos."""
+    if not GITHUB_REPO:
         return None
     url = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{_gh_path(station_code, filename)}'
     try:
-        r = requests.get(url, headers=_gh_headers(), timeout=10)
+        r = requests.get(url, headers=_gh_headers(auth_required=False), timeout=10)
         if r.status_code == 200:
             content = base64.b64decode(r.json()['content']).decode('utf-8')
             return json.loads(content)
         elif r.status_code == 404:
             return {}
+        else:
+            logger.warning(f'GitHub read returned {r.status_code} for {station_code}/{filename}')
     except Exception as e:
         logger.warning(f'GitHub read failed for {station_code}/{filename}: {e}')
     return None
 
 
 def _gh_write(station_code: str, filename: str, data: dict) -> bool:
-    """Write JSON file to GitHub for a station."""
+    """Write JSON file to GitHub for a station. Auth required."""
     if not GITHUB_TOKEN or not GITHUB_REPO:
+        logger.warning(f'GitHub write skipped - missing token or repo config')
         return False
     url = f'https://api.github.com/repos/{GITHUB_REPO}/contents/{_gh_path(station_code, filename)}'
     try:
+        # Get current SHA if file exists
         sha = None
-        r = requests.get(url, headers=_gh_headers(), timeout=10)
+        r = requests.get(url, headers=_gh_headers(auth_required=True), timeout=10)
         if r.status_code == 200:
             sha = r.json().get('sha')
 
@@ -81,8 +88,12 @@ def _gh_write(station_code: str, filename: str, data: dict) -> bool:
         if sha:
             payload['sha'] = sha
 
-        r = requests.put(url, headers=_gh_headers(), json=payload, timeout=15)
-        return r.status_code in (200, 201)
+        r = requests.put(url, headers=_gh_headers(auth_required=True), json=payload, timeout=15)
+        if r.status_code in (200, 201):
+            return True
+        else:
+            logger.warning(f'GitHub write returned {r.status_code} for {station_code}/{filename}')
+            return False
     except Exception as e:
         logger.warning(f'GitHub write failed for {station_code}/{filename}: {e}')
         return False
@@ -127,7 +138,7 @@ def load_station_webhooks(station_code: str) -> dict:
     """Load webhooks for a station. GitHub → local → empty."""
     station = station_code.upper()
     
-    # Try GitHub first
+    # Try GitHub first (no auth needed for public repo)
     data = _gh_read(station, 'webhooks.json')
     if data is not None and data:
         # Cache locally
