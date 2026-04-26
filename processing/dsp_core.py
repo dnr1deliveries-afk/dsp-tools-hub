@@ -1,11 +1,13 @@
 """
-DSP Tools Hub — Processing Engine
+DSP Tools Hub — Processing Engine v1.5
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
 
 Message format: pipe-separated columns, each padded to longest value + 5 spaces.
 Pipes won't be pixel-perfect in Slack's proportional font but give clear visual
 separation between fields.
+
+v1.5 - Multi-day support for Rostering and STC tools
 """
 
 import csv
@@ -37,6 +39,26 @@ def fmt_date(val) -> str:
     return s.split(' ')[0]
 
 
+def parse_date(date_str: str) -> datetime:
+    """Parse a DD/MM/YYYY string to datetime for sorting."""
+    if not date_str:
+        return datetime.min
+    try:
+        return datetime.strptime(date_str, '%d/%m/%Y')
+    except ValueError:
+        return datetime.min
+
+
+def format_date_range(dates: list) -> str:
+    """Format a list of date strings as a range or single date."""
+    if not dates:
+        return datetime.now().strftime('%d/%m/%Y')
+    sorted_dates = sorted(dates, key=parse_date)
+    if len(sorted_dates) == 1:
+        return sorted_dates[0]
+    return f"{sorted_dates[0]} to {sorted_dates[-1]}"
+
+
 def fmt_pct(val) -> str:
     if val is None or val == '' or val == 0:
         return '0%'
@@ -44,6 +66,8 @@ def fmt_pct(val) -> str:
         return f'{float(val):.0%}'
     except (ValueError, TypeError):
         return str(val)
+
+
 def mask_id(raw_id: str) -> str:
     """
     Anonymise driver ID using last 4 characters.
@@ -256,74 +280,158 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
 
 
 # ============================================================================
-# ROSTERING ACCURACY
+# ROSTERING ACCURACY (Multi-day support)
 # ============================================================================
 
 def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
     Input: Rostering_Capacity_C_*.csv
     Safe mode: no change (no driver IDs in this report).
+    
+    Multi-day support: Detects multiple dates in the file and groups by date.
+    If single date: shows simple format.
+    If multiple dates: shows per-date sections with summary.
     """
-    dsp_rows   = defaultdict(list)
-    first_date = ''
+    # Structure: dsp_data[dsp][date_str] = list of row dicts
+    dsp_data = defaultdict(lambda: defaultdict(list))
+    all_dates = set()
 
     for row in _open_csv(file_bytes):
         dsp = str(row.get('DSP', '') or '').strip()
         if not dsp:
             continue
-        if not first_date:
-            first_date = fmt_date(row.get('startdate_local', ''))
-        dsp_rows[dsp].append(row)
+        date_str = fmt_date(row.get('startdate_local', ''))
+        if date_str:
+            all_dates.add(date_str)
+        dsp_data[dsp][date_str].append(row)
 
-    if not dsp_rows:
+    if not dsp_data:
         raise ValueError("No data found. Check the file contains a 'DSP' column.")
 
+    sorted_dates = sorted(all_dates, key=parse_date)
+    is_multi_day = len(sorted_dates) > 1
+    date_range = format_date_range(sorted_dates)
+
     messages = {}
-    for dsp in sorted(dsp_rows.keys()):
-        headers   = ['Service Type', 'Compliance', 'Routes @15:30', 'Routes @Seq', 'D-1 vs D0']
-        data_rows = []
+    for dsp in sorted(dsp_data.keys()):
+        dates_dict = dsp_data[dsp]
+        
+        if is_multi_day:
+            # Multi-day format: separate sections per date
+            sections = []
+            total_below_90 = 0
+            total_service_types = 0
+            
+            for date_str in sorted(dates_dict.keys(), key=parse_date):
+                rows = dates_dict[date_str]
+                headers = ['Service Type', 'Compliance', 'Routes @15:30', 'Routes @Seq', 'D-1 vs D0']
+                data_rows = []
+                
+                for r in rows:
+                    svc = str(r.get('Service Type', '') or '').strip()
+                    try:
+                        comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
+                    except:
+                        comp_raw = 0.0
+                    flag = ' [!]' if comp_raw < 0.9 else ''
+                    if comp_raw < 0.9:
+                        total_below_90 += 1
+                    total_service_types += 1
+                    comp = f'{comp_raw:.0%}{flag}'
+                    try:
+                        r1530 = str(int(float(r.get('Rostered routes before 15:30', '') or 0)))
+                    except:
+                        r1530 = '-'
+                    try:
+                        r_seq = str(int(float(r.get('Rostered routes before Sequencing', '') or 0)))
+                    except:
+                        r_seq = '-'
+                    try:
+                        d1d0 = str(int(float(r.get('D-1 15:30 Plan vs D0 requested', '') or 0)))
+                    except:
+                        d1d0 = '-'
+                    data_rows.append([svc, comp, r1530, r_seq, d1d0])
+                
+                if data_rows:
+                    sections.append(f'📅 {date_str}\n' + pad_cols(headers, data_rows))
+            
+            summary_line = ''
+            if total_below_90 > 0:
+                summary_line = f'\n⚠️ {total_below_90}/{total_service_types} service type(s) below 90% across all dates\n'
+            
+            content = (
+                f'Rostering Accuracy — {dsp} — {date_range}\n\n'
+                f'Hi team, please find your rostering accuracy below for the period shown. '
+                f'Provide root cause for any service type below 90%. [!] = below 90%\n'
+                f'{summary_line}\n'
+                + '\n\n'.join(sections)
+            )
+        else:
+            # Single-day format (original behavior)
+            first_date = sorted_dates[0] if sorted_dates else ''
+            all_rows = []
+            for date_rows in dates_dict.values():
+                all_rows.extend(date_rows)
+            
+            headers = ['Service Type', 'Compliance', 'Routes @15:30', 'Routes @Seq', 'D-1 vs D0']
+            data_rows = []
 
-        for r in dsp_rows[dsp]:
-            svc = str(r.get('Service Type', '') or '').strip()
-            try:    comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
-            except: comp_raw = 0.0
-            flag  = ' [!]' if comp_raw < 0.9 else ''
-            comp  = f'{comp_raw:.0%}{flag}'
-            try:    r1530 = str(int(float(r.get('Rostered routes before 15:30', '') or 0)))
-            except: r1530 = '-'
-            try:    r_seq = str(int(float(r.get('Rostered routes before Sequencing', '') or 0)))
-            except: r_seq = '-'
-            try:    d1d0  = str(int(float(r.get('D-1 15:30 Plan vs D0 requested', '') or 0)))
-            except: d1d0  = '-'
-            data_rows.append([svc, comp, r1530, r_seq, d1d0])
+            for r in all_rows:
+                svc = str(r.get('Service Type', '') or '').strip()
+                try:
+                    comp_raw = float(r.get('Rostering Capacity Compliance %', 0) or 0)
+                except:
+                    comp_raw = 0.0
+                flag = ' [!]' if comp_raw < 0.9 else ''
+                comp = f'{comp_raw:.0%}{flag}'
+                try:
+                    r1530 = str(int(float(r.get('Rostered routes before 15:30', '') or 0)))
+                except:
+                    r1530 = '-'
+                try:
+                    r_seq = str(int(float(r.get('Rostered routes before Sequencing', '') or 0)))
+                except:
+                    r_seq = '-'
+                try:
+                    d1d0 = str(int(float(r.get('D-1 15:30 Plan vs D0 requested', '') or 0)))
+                except:
+                    d1d0 = '-'
+                data_rows.append([svc, comp, r1530, r_seq, d1d0])
 
-        content = (
-            f'Rostering Accuracy — {dsp} — {first_date}\n\n'
-            f'Hi team, please find your rostering accuracy below. '
-            f'Provide root cause for any service type below 90%. [!] = below 90%\n\n'
-            + pad_cols(headers, data_rows)
-        )
+            content = (
+                f'Rostering Accuracy — {dsp} — {first_date}\n\n'
+                f'Hi team, please find your rostering accuracy below. '
+                f'Provide root cause for any service type below 90%. [!] = below 90%\n\n'
+                + pad_cols(headers, data_rows)
+            )
+        
         messages[dsp] = wrap_message(content)
 
     return messages
 
 
 # ============================================================================
-# SERVICE TYPE COMPLIANCE (STC)
+# SERVICE TYPE COMPLIANCE (STC) - Multi-day support
 # ============================================================================
 
 def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
     Input: Dive Deep Data Service Type Compliance*.csv
     Safe mode: VIN replaced with deterministic DA-XXXX token.
+    
+    Multi-day support: Detects multiple dates in the file and groups by date.
+    If single date: shows simple format.
+    If multiple dates: shows per-date sections with summary counts.
     """
     SWAP_LABELS = {
         'plan:small execute:large': 'UPGRADED',
         'plan:large execute:small': 'DOWNGRADED',
         'plan equal execute':       'TIER MISMATCH',
     }
-    dsp_rows   = defaultdict(list)
-    first_date = ''
+    
+    # Structure: dsp_data[dsp][date_str] = list of row dicts
+    dsp_data = defaultdict(lambda: defaultdict(list))
+    all_dates = set()
 
     for row in _open_csv(file_bytes):
         if str(row.get('compliant', '1')).strip() != '0':
@@ -331,12 +439,14 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         dsp = str(row.get('dsp', '') or '').strip()
         if not dsp:
             continue
-        if not first_date:
-            first_date = fmt_date(row.get('date', ''))
+        
+        date_str = fmt_date(row.get('date', ''))
+        if date_str:
+            all_dates.add(date_str)
 
         raw_vin = str(row.get('vin', '') or '').strip()
-        dsp_rows[dsp].append({
-            'date':  fmt_date(row.get('date', '')),
+        dsp_data[dsp][date_str].append({
+            'date':  date_str,
             'vin':   mask_id(raw_vin) if safe_mode else raw_vin,
             'd1':    str(row.get('day_1_planned_service_type_and_route_service_type', '') or '').strip(),
             'd0':    str(row.get('day0_actual_executed_vehicle_service_type', '') or '').strip(),
@@ -344,22 +454,69 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             'swap':  SWAP_LABELS.get(str(row.get('not_compliant_type', '') or '').strip(), 'UNKNOWN'),
         })
 
-    if not dsp_rows:
+    if not dsp_data:
         raise ValueError("No non-compliant rows found. Check the file contains a 'compliant' column.")
 
+    sorted_dates = sorted(all_dates, key=parse_date)
+    is_multi_day = len(sorted_dates) > 1
+    date_range = format_date_range(sorted_dates)
+
     messages = {}
-    for dsp in sorted(dsp_rows.keys()):
-        headers   = ['Route', 'VIN', 'D-1 Planned', 'D-0 Actual', 'Change']
-        data_rows = [
-            [r['route'], r['vin'], r['d1'], r['d0'], r['swap']]
-            for r in dsp_rows[dsp]
-        ]
-        content = (
-            f'Service Type Compliance — {dsp} — {first_date}\n\n'
-            f'Hi team, please find below the D-0 vehicle swaps vs D-1 plan. '
-            f'Please provide insight on why these vehicles were swapped.\n\n'
-            + pad_cols(headers, data_rows)
-        )
+    for dsp in sorted(dsp_data.keys()):
+        dates_dict = dsp_data[dsp]
+        
+        if is_multi_day:
+            # Multi-day format: separate sections per date with counts
+            sections = []
+            total_swaps = 0
+            swap_counts = defaultdict(int)  # Track swap types across all dates
+            
+            for date_str in sorted(dates_dict.keys(), key=parse_date):
+                rows = dates_dict[date_str]
+                total_swaps += len(rows)
+                
+                headers = ['Route', 'VIN', 'D-1 Planned', 'D-0 Actual', 'Change']
+                data_rows = []
+                
+                for r in rows:
+                    swap_counts[r['swap']] += 1
+                    data_rows.append([r['route'], r['vin'], r['d1'], r['d0'], r['swap']])
+                
+                if data_rows:
+                    sections.append(
+                        f'📅 {date_str} ({len(rows)} swap{"s" if len(rows) != 1 else ""})\n'
+                        + pad_cols(headers, data_rows)
+                    )
+            
+            # Build summary line
+            swap_summary = ', '.join([f'{count} {swap_type}' for swap_type, count in sorted(swap_counts.items())])
+            
+            content = (
+                f'Service Type Compliance — {dsp} — {date_range}\n\n'
+                f'Hi team, please find below the D-0 vehicle swaps vs D-1 plan for the period shown. '
+                f'Please provide insight on why these vehicles were swapped.\n\n'
+                f'📊 Summary: {total_swaps} total swap(s) — {swap_summary}\n\n'
+                + '\n\n'.join(sections)
+            )
+        else:
+            # Single-day format (original behavior)
+            first_date = sorted_dates[0] if sorted_dates else ''
+            all_rows = []
+            for date_rows in dates_dict.values():
+                all_rows.extend(date_rows)
+            
+            headers = ['Route', 'VIN', 'D-1 Planned', 'D-0 Actual', 'Change']
+            data_rows = [
+                [r['route'], r['vin'], r['d1'], r['d0'], r['swap']]
+                for r in all_rows
+            ]
+            content = (
+                f'Service Type Compliance — {dsp} — {first_date}\n\n'
+                f'Hi team, please find below the D-0 vehicle swaps vs D-1 plan. '
+                f'Please provide insight on why these vehicles were swapped.\n\n'
+                + pad_cols(headers, data_rows)
+            )
+        
         messages[dsp] = wrap_message(content)
 
     return messages
@@ -627,6 +784,7 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     return messages
 
+
 # ============================================================================
 # CARRIER INVESTIGATIONS (DNR = Delivered Not Received)
 # ============================================================================
@@ -679,14 +837,13 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
         data_rows = [[str(data['investigations']), str(data['responses'])]]
 
         content = (
-            f'DNR Carrier Investigations \u2014 {dsp}\n\n'
+            f'DNR Carrier Investigations — {dsp}\n\n'
             f'Please see below current performance week to date.\n\n'
             + pad_cols(headers, data_rows)
         )
         messages[dsp] = wrap_message(content)
 
     return messages
-
 
 
 # ============================================================================
