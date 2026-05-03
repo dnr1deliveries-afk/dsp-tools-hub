@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Processing Engine v1.5
+DSP Tools Hub — Processing Engine v1.6
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
 
@@ -8,20 +8,21 @@ Pipes won't be pixel-perfect in Slack's proportional font but give clear visual
 separation between fields.
 
 v1.5 - Multi-day support for Rostering and STC tools
+v1.6 - Chase tool: optional bulk history for mistaken return detection
+       Returns (messages, returned_by_dsp) - returned shown on web only, not in Slack
 """
 
 import csv
 import io
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # ============================================================================
 # HELPERS
 # ============================================================================
 
-# Slack divider line for message readability
 DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 
@@ -40,7 +41,6 @@ def fmt_date(val) -> str:
 
 
 def parse_date(date_str: str) -> datetime:
-    """Parse a DD/MM/YYYY string to datetime for sorting."""
     if not date_str:
         return datetime.min
     try:
@@ -50,7 +50,6 @@ def parse_date(date_str: str) -> datetime:
 
 
 def format_date_range(dates: list) -> str:
-    """Format a list of date strings as a range or single date."""
     if not dates:
         return datetime.now().strftime('%d/%m/%Y')
     sorted_dates = sorted(dates, key=parse_date)
@@ -69,42 +68,19 @@ def fmt_pct(val) -> str:
 
 
 def mask_id(raw_id: str) -> str:
-    """
-    Anonymise driver ID using last 4 characters.
-    Example: 'A2E1ZLJ8TBT4Q1' -> 'DA-T4Q1'
-             'ABCD' -> 'DA-ABCD'
-             'AB' -> 'DA-AB'
-    """
     if not raw_id:
         return 'DA-????'
-    # Use last 4 chars (or full ID if shorter)
     suffix = raw_id.strip()[-4:].upper()
     return f'DA-{suffix}'
 
 
 def _open_csv(file_bytes: bytes):
-    """Return a csv.DictReader from raw bytes, handling UTF-8 BOM."""
     text = file_bytes.decode('utf-8-sig')
     return csv.DictReader(io.StringIO(text))
 
 
 def pad_cols(headers: list, rows: list, extra: int = 5) -> str:
-    """
-    Render a list of rows as pipe-separated text with padded columns.
-
-    Each column width = max(len of all values in that column, len of header) + extra.
-    Padding is spaces so pipes land at consistent positions across rows.
-    Not pixel-perfect in Slack's proportional font but visually clear.
-
-    headers : list of column header strings
-    rows    : list of lists, same length as headers
-    extra   : spaces added beyond the longest value (default 5)
-
-    Returns a single string — header row + separator + data rows.
-    """
     all_rows = [headers] + rows
-
-    # Column widths: max cell length + extra padding
     col_widths = [
         max(len(str(all_rows[r][c])) for r in range(len(all_rows))) + extra
         for c in range(len(headers))
@@ -116,47 +92,101 @@ def pad_cols(headers: list, rows: list, extra: int = 5) -> str:
             for i, cell in enumerate(row)
         )
 
-    # Separator uses dashes to width of each column
     separator = '| ' + '| '.join('-' * col_widths[i] for i in range(len(headers)))
-
     lines = [fmt_row(headers), separator]
     lines += [fmt_row(r) for r in rows]
     return '\n'.join(lines)
 
 
 def wrap_message(content: str) -> str:
-    """Wrap message content with top and bottom dividers for Slack readability."""
     return f'{DIVIDER}\n{content}\n{DIVIDER}'
+
+
+# ============================================================================
+# DSP CHASE - BULK HISTORY HELPERS (v1.6)
+# ============================================================================
+
+def parse_bulk_history(history_bytes: bytes) -> dict:
+    history = defaultdict(list)
+    for row in _open_csv(history_bytes):
+        tid = row.get('Tracking ID', '').strip()
+        if tid:
+            history[tid].append({
+                'date': row.get('Date', ''),
+                'reason': row.get('Reason', ''),
+                'operation': row.get('Operation', ''),
+                'status': row.get('Current Status', '')
+            })
+    return history
+
+
+def is_mistaken_return(tracking_id: str, history: dict, reference_date: datetime = None) -> tuple:
+    if tracking_id not in history:
+        return False, None
+    
+    ref = reference_date or datetime.now()
+    d_minus_1 = (ref - timedelta(days=1)).date()
+    
+    for event in history[tracking_id]:
+        if event['reason'] != 'WRONG_CYCLE_INDUCT':
+            continue
+        try:
+            event_dt = datetime.strptime(event['date'], '%d/%m/%Y %H:%M:%S')
+        except ValueError:
+            continue
+        if event_dt.date() == d_minus_1 and event_dt.hour >= 13:
+            return True, event['date']
+    
+    return False, None
 
 
 # ============================================================================
 # DSP CHASE
 # ============================================================================
 
-def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+def generate_chase_messages(file_bytes: bytes, history_bytes: bytes = None,
+                            safe_mode: bool = False) -> tuple:
     """
-    Input: OUTSTANDING SCRUB ERROR*.csv
-    Safe mode: no change (no driver IDs in this report).
+    Returns: (messages_dict, returned_by_dsp_dict)
+        - messages_dict: {dsp: message_text} for Slack (excludes returned)
+        - returned_by_dsp_dict: {dsp: [list of tracking IDs]} for web display only
     """
-    dsp_data = defaultdict(lambda: {'chase': set(), 'missing': set()})
+    history = parse_bulk_history(history_bytes) if history_bytes else {}
+    
+    dsp_data = defaultdict(lambda: {'chase': set(), 'missing': set(), 'returned': set()})
 
     for row in _open_csv(file_bytes):
         dsp    = row.get('DSP Name', '').strip()
         tid    = row.get('trackingId', '').strip()
         reason = row.get('Attempt Reason Code', '').strip()
-        if dsp and tid:
-            if reason == 'ITEMS_MISSING':
-                dsp_data[dsp]['missing'].add(tid)
-            else:
-                dsp_data[dsp]['chase'].add(tid)
+        
+        if not (dsp and tid):
+            continue
+        
+        if history:
+            is_mistaken, _ = is_mistaken_return(tid, history)
+            if is_mistaken:
+                dsp_data[dsp]['returned'].add(tid)
+                continue
+        
+        if reason == 'ITEMS_MISSING':
+            dsp_data[dsp]['missing'].add(tid)
+        else:
+            dsp_data[dsp]['chase'].add(tid)
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
+    returned_by_dsp = {}
+    
     for dsp in sorted(dsp_data.keys()):
-        chase   = sorted(dsp_data[dsp]['chase'])
-        missing = sorted(dsp_data[dsp]['missing'])
+        chase    = sorted(dsp_data[dsp]['chase'])
+        missing  = sorted(dsp_data[dsp]['missing'])
+        returned = sorted(dsp_data[dsp]['returned'])
+        
+        if returned:
+            returned_by_dsp[dsp] = returned
+        
         sections = []
-
         if chase:
             lines = [f'To Chase ({len(chase)}):']
             lines += [f'  {t}' for t in chase]
@@ -182,7 +212,8 @@ def generate_chase_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             'Appreciate your support.'
         )
         messages[dsp] = wrap_message(content)
-    return messages
+    
+    return messages, returned_by_dsp
 
 
 # ============================================================================
@@ -219,11 +250,6 @@ def _format_pickup_type(pickup_type: str, route_code: str = '') -> str:
 
 def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
                               safe_mode: bool = False) -> tuple:
-    """
-    Input: AWAITING PICK UP*.csv + optional SearchResults*.csv
-    Safe mode: no change (no driver IDs in this report).
-    Returns: (messages dict, pickup_date string)
-    """
     route_lookup = _load_route_lookup(search_bytes) if search_bytes else {}
     dsp_pickups  = defaultdict(list)
     pickup_date  = None
@@ -233,10 +259,7 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
         ptype  = row.get('Pick up Type', '').strip()
         window = row.get('Pick up Start Window', '').strip()
         if not ptype:
-            # Any start time other than 00:00 is a Home collection
-            # 00:00 = Counter pickup (NOREASON)
             row['Pick up Type'] = 'NOREASON' if '00:00' in window else ''
-
 
     for row in rows:
         dsp        = row.get('Dsp', '').strip()
@@ -280,19 +303,10 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
 
 
 # ============================================================================
-# ROSTERING ACCURACY (Multi-day support)
+# ROSTERING ACCURACY
 # ============================================================================
 
 def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Rostering_Capacity_C_*.csv
-    Safe mode: no change (no driver IDs in this report).
-    
-    Multi-day support: Detects multiple dates in the file and groups by date.
-    If single date: shows simple format.
-    If multiple dates: shows per-date sections with summary.
-    """
-    # Structure: dsp_data[dsp][date_str] = list of row dicts
     dsp_data = defaultdict(lambda: defaultdict(list))
     all_dates = set()
 
@@ -317,7 +331,6 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
         dates_dict = dsp_data[dsp]
         
         if is_multi_day:
-            # Multi-day format: separate sections per date
             sections = []
             total_below_90 = 0
             total_service_types = 0
@@ -367,7 +380,6 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
                 + '\n\n'.join(sections)
             )
         else:
-            # Single-day format (original behavior)
             first_date = sorted_dates[0] if sorted_dates else ''
             all_rows = []
             for date_rows in dates_dict.values():
@@ -411,25 +423,16 @@ def generate_rostering_messages(file_bytes: bytes, safe_mode: bool = False) -> d
 
 
 # ============================================================================
-# SERVICE TYPE COMPLIANCE (STC) - Multi-day support
+# SERVICE TYPE COMPLIANCE (STC)
 # ============================================================================
 
 def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Dive Deep Data Service Type Compliance*.csv
-    Safe mode: VIN replaced with deterministic DA-XXXX token.
-    
-    Multi-day support: Detects multiple dates in the file and groups by date.
-    If single date: shows simple format.
-    If multiple dates: shows per-date sections with summary counts.
-    """
     SWAP_LABELS = {
         'plan:small execute:large': 'UPGRADED',
         'plan:large execute:small': 'DOWNGRADED',
         'plan equal execute':       'TIER MISMATCH',
     }
     
-    # Structure: dsp_data[dsp][date_str] = list of row dicts
     dsp_data = defaultdict(lambda: defaultdict(list))
     all_dates = set()
 
@@ -466,10 +469,9 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         dates_dict = dsp_data[dsp]
         
         if is_multi_day:
-            # Multi-day format: separate sections per date with counts
             sections = []
             total_swaps = 0
-            swap_counts = defaultdict(int)  # Track swap types across all dates
+            swap_counts = defaultdict(int)
             
             for date_str in sorted(dates_dict.keys(), key=parse_date):
                 rows = dates_dict[date_str]
@@ -488,7 +490,6 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
                         + pad_cols(headers, data_rows)
                     )
             
-            # Build summary line
             swap_summary = ', '.join([f'{count} {swap_type}' for swap_type, count in sorted(swap_counts.items())])
             
             content = (
@@ -499,7 +500,6 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
                 + '\n\n'.join(sections)
             )
         else:
-            # Single-day format (original behavior)
             first_date = sorted_dates[0] if sorted_dates else ''
             all_rows = []
             for date_rows in dates_dict.values():
@@ -527,10 +527,6 @@ def generate_stc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 # ============================================================================
 
 def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Exceptions_Based_Dee_*.csv (excludes NOTIFY_OF_ARRIVAL rows)
-    Safe mode: Transporter ID replaced with deterministic DA-XXXX token.
-    """
     dsp_rows   = defaultdict(list)
     first_date = ''
 
@@ -582,10 +578,6 @@ def generate_cc_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 # ============================================================================
 
 def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: POD_Summary_*.csv (excludes is_bypassed=Y rows)
-    Safe mode: DA ID replaced with deterministic DA-XXXX token.
-    """
     dsp_rows   = defaultdict(list)
     first_date = ''
 
@@ -630,10 +622,6 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 # ============================================================================
 
 def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Exceptions_Based_Dee_*.csv (only NOTIFY_OF_ARRIVAL rows)
-    Safe mode: Transporter ID replaced with deterministic DA-XXXX token.
-    """
     first_date = ''
     dsp_data   = defaultdict(lambda: defaultdict(int))
 
@@ -682,24 +670,12 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
 
 # ============================================================================
-# PROCESSING - UNRETURNED BAGS
+# UNRETURNED BAGS
 # ============================================================================
 
 def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: List_of_not_returned_*.csv (as bytes)
+    FLAG_THRESHOLD = 3
 
-    Columns used:
-        DSP, Route Code, Date, Bag, Transporter_id, Unrecovered
-
-    Groups by DSP -> Date -> Route Code, counts bags per route per date.
-    Flags routes with 3+ bags as high priority.
-    Date range = min to max date across all rows for that DSP.
-    One message per DSP.
-    """
-    FLAG_THRESHOLD = 3  # routes with this many or more bags get flagged
-
-    # dsp_data[dsp][date_str][route] = list of bag IDs
     dsp_data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
 
     for row in _open_csv(file_bytes):
@@ -711,7 +687,6 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         if not dsp or not route or not bag:
             continue
 
-        # Parse date to DD/MM/YYYY
         date_str = fmt_date(date_raw)
         dsp_data[dsp][date_str][route].append(bag)
 
@@ -731,7 +706,6 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         date_from = all_dates[0]  if all_dates else ''
         date_to   = all_dates[-1] if all_dates else ''
 
-        # Only count routes with 2+ bags (singles are excluded from output)
         total_bags = sum(
             len(bags)
             for date_routes in dates_dict.values()
@@ -745,7 +719,6 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             if len(bags) >= FLAG_THRESHOLD
         )
 
-        # Build per-date sections
         sections = []
         for date_str in all_dates:
             routes_dict   = dates_dict[date_str]
@@ -756,12 +729,12 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             for route in sorted_routes:
                 count = len(routes_dict[route])
                 if count < 2:
-                    continue  # exclude single-bag routes
+                    continue
                 flag = ' [!]' if count >= FLAG_THRESHOLD else ''
                 data_rows.append([route, f'{count}{flag}'])
 
             if not data_rows:
-                continue  # skip date entirely if all routes were singles
+                continue
 
             sections.append(
                 f'{date_str}\n'
@@ -786,19 +759,10 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
 
 # ============================================================================
-# CARRIER INVESTIGATIONS (DNR = Delivered Not Received)
+# CARRIER INVESTIGATIONS
 # ============================================================================
 
 def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Carrier_Investigatio_*.csv
-    Safe mode: no change (no driver IDs in this report).
-
-    Columns used:
-        delivery_station, dsp_shortcode, Carrier Investigations, DSP Responses
-
-    One message per DSP showing investigations opened and DSP responses week to date.
-    """
     dsp_data = {}
 
     for row in _open_csv(file_bytes):
@@ -816,7 +780,6 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
         except (ValueError, TypeError):
             responses = 0
 
-        # Only include DSPs with at least one investigation
         if investigations > 0:
             dsp_data[dsp] = {
                 'investigations': investigations,
@@ -847,15 +810,10 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
 
 
 # ============================================================================
-# VSA (Vehicle Safety Audit)
+# VSA
 # ============================================================================
 
 def mask_vin(raw_vin: str) -> str:
-    """
-    Anonymise VIN using last 4 characters.
-    Example: 'WF0XXXBDFXBJ16285' -> 'VIN-6285'
-             'ABCD' -> 'VIN-ABCD'
-    """
     if not raw_vin:
         return 'VIN-????'
     suffix = raw_vin.strip()[-4:].upper()
@@ -863,24 +821,9 @@ def mask_vin(raw_vin: str) -> str:
 
 
 def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    """
-    Input: Dive Deep Data Total Expected VSA Audits (Cycle)*.csv
-    
-    Filters rows where inspection_passed = 'N' (vehicles pending VSA this cycle).
-    Groups by DSP and outputs VIN list in markdown table format.
-    
-    Safe mode: VIN replaced with anonymised VIN-XXXX token.
-    
-    Columns used:
-        dsp, vin, vrns, inspection_passed, status
-    
-    Output: One message per DSP with list of vehicles pending VSA.
-    """
-    # dsp_data[dsp] = list of vehicle dicts
     dsp_data = defaultdict(list)
 
     for row in _open_csv(file_bytes):
-        # Only include rows where inspection_passed = 'N'
         inspection = str(row.get('inspection_passed', '') or '').strip().upper()
         if inspection != 'N':
             continue
@@ -903,14 +846,9 @@ def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             "Check the file contains 'dsp', 'vin', and 'inspection_passed' columns."
         )
 
-    # Calculate total vehicles pending
-    total_pending = sum(len(vehicles) for vehicles in dsp_data.values())
-
     messages = {}
     for dsp in sorted(dsp_data.keys()):
         vehicles = dsp_data[dsp]
-        
-        # Sort vehicles by VRN for consistency
         vehicles_sorted = sorted(vehicles, key=lambda x: x['vrn'])
         
         headers = ['DSP Name', 'VRN', 'VIN']

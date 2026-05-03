@@ -64,6 +64,9 @@
                         data-dsp="{{ dsp }}"
                         onclick="showMessage('{{ dsp }}')">
                     <span class="fw-semibold">{{ dsp }}</span>
+                    {% if returned_packages and returned_packages.get(dsp) %}
+                    <span class="badge bg-info text-dark ms-2" title="Returned packages (web only)">🔄 {{ returned_packages[dsp]|length }}</span>
+                    {% endif %}
                     <i class="bi bi-chevron-right float-end mt-1 small"></i>
                 </button>
                 {% endfor %}
@@ -126,6 +129,21 @@
             <div class="card-body p-0">
                 {% if dsp_list %}
                 <pre id="messagePreview" class="message-preview p-3 mb-0">{{ first_message }}</pre>
+                
+                <!-- v1.6: Returned packages section (web display only) -->
+                {% if returned_packages %}
+                <div id="returnedSection" class="border-top p-3 bg-light" style="display: {% if returned_packages.get(dsp_list[0]) %}block{% else %}none{% endif %};">
+                    <h6 class="fw-bold text-info mb-2">
+                        <i class="bi bi-arrow-return-left me-1"></i>🔄 Already Returned (excluded from Slack)
+                    </h6>
+                    <p class="small text-muted mb-2">These packages were detected as mistaken returns (WRONG_CYCLE_INDUCT on D-1 after 1PM):</p>
+                    <ul id="returnedList" class="list-unstyled mb-0 small">
+                        {% for tid in returned_packages.get(dsp_list[0], []) %}
+                        <li><code>{{ tid }}</code></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
                 {% else %}
                 <div class="p-4 text-center text-muted">
                     <i class="bi bi-arrow-left-circle fs-2 d-block mb-2 opacity-25"></i>
@@ -144,6 +162,13 @@
 {{ messages | tojson }}
 </script>
 {% endif %}
+
+<!-- v1.6: Hidden returned packages store (JSON) for JS access -->
+{% if returned_packages %}
+<script id="returnedData" type="application/json">
+{{ returned_packages | tojson }}
+</script>
+{% endif %}
 {% endblock %}
 
 
@@ -152,6 +177,9 @@
 <script>
 // ── Message data ────────────────────────────────────────────────────────────
 const MESSAGES    = JSON.parse(document.getElementById('messagesData').textContent);
+const RETURNED    = document.getElementById('returnedData') 
+                    ? JSON.parse(document.getElementById('returnedData').textContent) 
+                    : {};
 const TOOL_ID     = '{{ tool_id }}';
 let   currentDsp  = '{{ dsp_list[0] }}';
 
@@ -166,6 +194,19 @@ function showMessage(dsp) {
     document.querySelectorAll('.dsp-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.dsp === dsp);
     });
+    
+    // v1.6: Update returned packages section
+    const returnedSection = document.getElementById('returnedSection');
+    const returnedList = document.getElementById('returnedList');
+    if (returnedSection && returnedList) {
+        const dspReturned = RETURNED[dsp] || [];
+        if (dspReturned.length > 0) {
+            returnedSection.style.display = 'block';
+            returnedList.innerHTML = dspReturned.map(tid => `<li><code>${tid}</code></li>`).join('');
+        } else {
+            returnedSection.style.display = 'none';
+        }
+    }
 }
 
 // ── Copy message to clipboard ───────────────────────────────────────────────

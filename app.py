@@ -1,9 +1,12 @@
 """
-DSP Tools Hub — Web Application v1.3
+DSP Tools Hub — Web Application v1.6
 Flask web interface for the DSP Tools Hub.
 Multi-station support with per-station webhook configuration.
 Deploy: Docker → Render.com
 Repo:   dnr1deliveries-afk/dsp-tools-hub
+
+v1.6 - Chase tool: optional bulk history upload for mistaken return detection
+       Returned packages shown on web UI only (excluded from Slack messages)
 """
 
 import os
@@ -47,10 +50,10 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.4'
-BUILD_DATE = '2026-06-14'
+VERSION    = '1.6'
+BUILD_DATE = '2026-05-03'
 
-# ── Tool registry — single source of truth for all 9 tools ───────────────────
+# ── Tool registry — single source of truth for all 10 tools ───────────────────
 TOOLS = {
     'chase': {
         'name':      'DSP Chase',
@@ -58,7 +61,9 @@ TOOLS = {
         'emoji':     '🔍',
         'desc':      'Outstanding scrub error shipments per DSP',
         'files':     [{'id': 'csv_file', 'label': 'Scrub Error CSV',
-                       'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True}],
+                       'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True},
+                      {'id': 'history_file', 'label': 'Bulk History Export (optional)',
+                       'hint': 'bulk_history_export*.csv — detects mistaken returns', 'required': False}],
         'safe_affected': False,
     },
     'pickups': {
@@ -180,6 +185,7 @@ def inject_globals():
 
 # ── Session helpers ───────────────────────────────────────────────────────────
 _msg_store = defaultdict(dict)
+_returned_store = defaultdict(dict)  # v1.6: store returned packages separately
 
 
 def get_station() -> str:
@@ -197,6 +203,21 @@ def get_stored_messages(tool_id: str) -> dict:
     sid = session.get('sid')
     if sid and sid in _msg_store:
         return _msg_store[sid].get(tool_id, {})
+    return {}
+
+
+def store_returned(tool_id: str, returned: dict):
+    """v1.6: Store returned packages for web display."""
+    sid = session.get('sid')
+    if sid:
+        _returned_store[sid][tool_id] = returned
+
+
+def get_stored_returned(tool_id: str) -> dict:
+    """v1.6: Get returned packages for web display."""
+    sid = session.get('sid')
+    if sid and sid in _returned_store:
+        return _returned_store[sid].get(tool_id, {})
     return {}
 
 
@@ -255,25 +276,35 @@ def tool(tool_id):
 
     tool_meta = TOOLS[tool_id]
     messages  = {}
+    returned_packages = {}  # v1.6: for chase tool
     error     = None
 
     if request.method == 'POST':
         safe_mode = session.get('safe_mode', False)
 
         try:
-            csv_file    = request.files.get('csv_file')
-            search_file = request.files.get('search_file')
+            csv_file     = request.files.get('csv_file')
+            search_file  = request.files.get('search_file')
+            history_file = request.files.get('history_file')  # v1.6: optional bulk history
 
             if not csv_file or not csv_file.filename:
                 raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
 
             file_bytes   = csv_file.read()
             search_bytes = search_file.read() if search_file and search_file.filename else None
+            history_bytes = history_file.read() if history_file and history_file.filename else None
 
             gen = GENERATORS[tool_id]
 
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
+            elif tool_id == 'chase':
+                # v1.6: Chase returns (messages, returned_by_dsp) tuple
+                messages, returned_packages = gen(file_bytes, history_bytes=history_bytes, safe_mode=safe_mode)
+                store_returned(tool_id, returned_packages)
+                if returned_packages:
+                    total_returned = sum(len(v) for v in returned_packages.values())
+                    flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from Slack).', 'info')
             else:
                 messages = gen(file_bytes, safe_mode=safe_mode)
 
@@ -294,6 +325,7 @@ def tool(tool_id):
 
     else:
         messages = get_stored_messages(tool_id)
+        returned_packages = get_stored_returned(tool_id)
 
     webhooks      = load_station_webhooks(station)
     dsp_list      = sorted(messages.keys())
@@ -308,6 +340,7 @@ def tool(tool_id):
         first_message=first_message,
         webhooks=webhooks,
         error=error,
+        returned_packages=returned_packages,  # v1.6: pass to template
     )
 
 
