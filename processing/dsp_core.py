@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Processing Engine v1.6
+DSP Tools Hub — Processing Engine v1.8
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
 
@@ -10,8 +10,12 @@ separation between fields.
 v1.5 - Multi-day support for Rostering and STC tools
 v1.6 - Chase tool: optional bulk history for mistaken return detection
        Returns (messages, returned_by_dsp) - returned shown on web only, not in Slack
+v1.7 - Chase tool: expanded mistaken return detection
+       Condition 1: WRONG_CYCLE_INDUCT on D-1 after 13:00
+       Condition 2: INDUCTED + PACKAGE_STATE_UPDATE from 23:30 D-1 to present
+v1.8 - Chase tool: Route Code lookup from Tracer file (with Bulk History fallback)
+       Packages now display with their assigned Route Code in messages
 """
-
 import csv
 import io
 import re
@@ -103,7 +107,7 @@ def wrap_message(content: str) -> str:
 
 
 # ============================================================================
-# DSP CHASE - BULK HISTORY HELPERS (v1.6)
+# DSP CHASE - BULK HISTORY HELPERS (v1.7)
 # ============================================================================
 
 def parse_bulk_history(history_bytes: bytes) -> dict:
@@ -121,23 +125,91 @@ def parse_bulk_history(history_bytes: bytes) -> dict:
 
 
 def is_mistaken_return(tracking_id: str, history: dict, reference_date: datetime = None) -> tuple:
+    """
+    Check if a tracking ID should be flagged as already returned (exclude from chase).
+    
+    Returns: (is_returned: bool, event_date: str or None)
+    
+    Conditions (either triggers a return):
+    1. WRONG_CYCLE_INDUCT reason on D-1 after 13:00
+    2. INDUCTED status + PACKAGE_STATE_UPDATE operation from 23:30 D-1 to present
+    """
     if tracking_id not in history:
         return False, None
     
     ref = reference_date or datetime.now()
     d_minus_1 = (ref - timedelta(days=1)).date()
     
+    # Calculate the cutoff: 23:30 on D-1
+    cutoff_time = datetime.combine(d_minus_1, datetime.min.time().replace(hour=23, minute=30))
+    
     for event in history[tracking_id]:
-        if event['reason'] != 'WRONG_CYCLE_INDUCT':
-            continue
         try:
             event_dt = datetime.strptime(event['date'], '%d/%m/%Y %H:%M:%S')
         except ValueError:
             continue
-        if event_dt.date() == d_minus_1 and event_dt.hour >= 13:
-            return True, event['date']
+        
+        # Condition 1: WRONG_CYCLE_INDUCT on D-1 after 13:00
+        if event.get('reason') == 'WRONG_CYCLE_INDUCT':
+            if event_dt.date() == d_minus_1 and event_dt.hour >= 13:
+                return True, event['date']
+        
+        # Condition 2: INDUCTED + PACKAGE_STATE_UPDATE from 23:30 D-1 to now
+        if (event.get('status') == 'INDUCTED' and 
+            event.get('operation') == 'PACKAGE_STATE_UPDATE'):
+            if cutoff_time <= event_dt <= ref:
+                return True, event['date']
     
     return False, None
+
+
+# ============================================================================
+# DSP CHASE - ROUTE CODE HELPERS (v1.8)
+# ============================================================================
+
+def parse_tracer_routes(tracer_bytes: bytes) -> dict:
+    """
+    Parse Tracer file (NDNR Day-1 Raw Data) to extract route codes.
+    Returns: {tracking_id: route_code}
+    """
+    routes = {}
+    if not tracer_bytes:
+        return routes
+    for row in _open_csv(tracer_bytes):
+        tid = row.get('trackingId', '').strip()
+        route = row.get('RoutePlan.routeCode', '').strip()
+        if tid and route:
+            routes[tid] = route
+    return routes
+
+
+def parse_bulk_history_routes(history_bytes: bytes) -> dict:
+    """
+    Parse Bulk History file to extract route codes (fallback).
+    Returns: {tracking_id: route_code}
+    """
+    routes = {}
+    if not history_bytes:
+        return routes
+    for row in _open_csv(history_bytes):
+        tid = row.get('Tracking ID', '').strip()
+        route = row.get('Route Code', '').strip()
+        if tid and route and tid not in routes:
+            routes[tid] = route
+    return routes
+
+
+def get_route_code(tracking_id: str, tracer_routes: dict, history_routes: dict) -> str:
+    """
+    Get route code for a tracking ID.
+    Priority: Tracer file first, then Bulk History fallback.
+    Returns: route code string or empty string if not found.
+    """
+    if tracking_id in tracer_routes:
+        return tracer_routes[tracking_id]
+    if tracking_id in history_routes:
+        return history_routes[tracking_id]
+    return ''
 
 
 # ============================================================================
@@ -145,15 +217,22 @@ def is_mistaken_return(tracking_id: str, history: dict, reference_date: datetime
 # ============================================================================
 
 def generate_chase_messages(file_bytes: bytes, history_bytes: bytes = None,
+                            tracer_bytes: bytes = None,
                             safe_mode: bool = False) -> tuple:
     """
     Returns: (messages_dict, returned_by_dsp_dict)
         - messages_dict: {dsp: message_text} for Slack (excludes returned)
         - returned_by_dsp_dict: {dsp: [list of tracking IDs]} for web display only
+    
+    v1.8: Now includes Route Code lookup from Tracer (with Bulk History fallback)
     """
     history = parse_bulk_history(history_bytes) if history_bytes else {}
     
-    dsp_data = defaultdict(lambda: {'chase': set(), 'missing': set(), 'returned': set()})
+    # v1.8: Build route code lookups
+    tracer_routes = parse_tracer_routes(tracer_bytes) if tracer_bytes else {}
+    history_routes = parse_bulk_history_routes(history_bytes) if history_bytes else {}
+    
+    dsp_data = defaultdict(lambda: {'chase': [], 'missing': [], 'returned': []})
 
     for row in _open_csv(file_bytes):
         dsp    = row.get('DSP Name', '').strip()
@@ -163,38 +242,52 @@ def generate_chase_messages(file_bytes: bytes, history_bytes: bytes = None,
         if not (dsp and tid):
             continue
         
+        # v1.8: Get route code for this tracking ID
+        route_code = get_route_code(tid, tracer_routes, history_routes)
+        
         if history:
             is_mistaken, _ = is_mistaken_return(tid, history)
             if is_mistaken:
-                dsp_data[dsp]['returned'].add(tid)
+                dsp_data[dsp]['returned'].append({'tid': tid, 'route': route_code})
                 continue
         
         if reason == 'ITEMS_MISSING':
-            dsp_data[dsp]['missing'].add(tid)
+            dsp_data[dsp]['missing'].append({'tid': tid, 'route': route_code})
         else:
-            dsp_data[dsp]['chase'].add(tid)
+            dsp_data[dsp]['chase'].append({'tid': tid, 'route': route_code})
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
     returned_by_dsp = {}
     
     for dsp in sorted(dsp_data.keys()):
-        chase    = sorted(dsp_data[dsp]['chase'])
-        missing  = sorted(dsp_data[dsp]['missing'])
-        returned = sorted(dsp_data[dsp]['returned'])
+        # Sort by route code (numeric extraction) then by tracking ID
+        def sort_key(item):
+            route_num = _extract_route_number(item['route']) if item['route'] else 9999
+            return (route_num, item['tid'])
+        
+        chase    = sorted(dsp_data[dsp]['chase'], key=sort_key)
+        missing  = sorted(dsp_data[dsp]['missing'], key=sort_key)
+        returned = sorted(dsp_data[dsp]['returned'], key=sort_key)
         
         if returned:
-            returned_by_dsp[dsp] = returned
+            returned_by_dsp[dsp] = [r['tid'] for r in returned]
         
         sections = []
         if chase:
+            # v1.8: Include route code in output
             lines = [f'To Chase ({len(chase)}):']
-            lines += [f'  {t}' for t in chase]
+            for item in chase:
+                route_display = f' [{item["route"]}]' if item['route'] else ''
+                lines.append(f'  {item["tid"]}{route_display}')
             sections.append('\n'.join(lines))
 
         if missing:
+            # v1.8: Include route code in output
             lines = [f'Driver Marked Missing ({len(missing)}):']
-            lines += [f'  {t}' for t in missing]
+            for item in missing:
+                route_display = f' [{item["route"]}]' if item['route'] else ''
+                lines.append(f'  {item["tid"]}{route_display}')
             sections.append('\n'.join(lines))
 
         if not sections:

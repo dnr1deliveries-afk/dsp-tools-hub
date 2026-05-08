@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Web Application v1.6
+DSP Tools Hub — Web Application v1.8
 Flask web interface for the DSP Tools Hub.
 Multi-station support with per-station webhook configuration.
 Deploy: Docker → Render.com
@@ -7,6 +7,8 @@ Repo:   dnr1deliveries-afk/dsp-tools-hub
 
 v1.6 - Chase tool: optional bulk history upload for mistaken return detection
        Returned packages shown on web UI only (excluded from Slack messages)
+v1.8 - Chase tool: Route Code lookup from Tracer file (with Bulk History fallback)
+       Packages now display with their assigned Route Code in messages
 """
 
 import os
@@ -50,8 +52,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.6'
-BUILD_DATE = '2026-05-03'
+VERSION    = '1.8'
+BUILD_DATE = '2026-05-08'
 
 # ── Tool registry — single source of truth for all 10 tools ───────────────────
 TOOLS = {
@@ -63,7 +65,9 @@ TOOLS = {
         'files':     [{'id': 'csv_file', 'label': 'Scrub Error CSV',
                        'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True},
                       {'id': 'history_file', 'label': 'Bulk History Export (optional)',
-                       'hint': 'bulk_history_export*.csv — detects mistaken returns', 'required': False}],
+                       'hint': 'bulk_history_export*.csv — detects mistaken returns', 'required': False},
+                      {'id': 'tracer_file', 'label': 'Tracer File (optional)',
+                       'hint': 'NDNR Day-1 Raw Data*.csv — adds Route Codes', 'required': False}],
         'safe_affected': False,
     },
     'pickups': {
@@ -286,6 +290,7 @@ def tool(tool_id):
             csv_file     = request.files.get('csv_file')
             search_file  = request.files.get('search_file')
             history_file = request.files.get('history_file')  # v1.6: optional bulk history
+            tracer_file  = request.files.get('tracer_file')   # v1.8: optional tracer for route codes
 
             if not csv_file or not csv_file.filename:
                 raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
@@ -293,18 +298,28 @@ def tool(tool_id):
             file_bytes   = csv_file.read()
             search_bytes = search_file.read() if search_file and search_file.filename else None
             history_bytes = history_file.read() if history_file and history_file.filename else None
+            tracer_bytes = tracer_file.read() if tracer_file and tracer_file.filename else None
 
             gen = GENERATORS[tool_id]
 
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
             elif tool_id == 'chase':
-                # v1.6: Chase returns (messages, returned_by_dsp) tuple
-                messages, returned_packages = gen(file_bytes, history_bytes=history_bytes, safe_mode=safe_mode)
+                # v1.8: Chase returns (messages, returned_by_dsp) tuple
+                # Now accepts optional tracer_bytes for route code lookup
+                messages, returned_packages = gen(
+                    file_bytes,
+                    history_bytes=history_bytes,
+                    tracer_bytes=tracer_bytes,
+                    safe_mode=safe_mode
+                )
                 store_returned(tool_id, returned_packages)
                 if returned_packages:
                     total_returned = sum(len(v) for v in returned_packages.values())
                     flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from Slack).', 'info')
+                # v1.8: Notify if route codes were added
+                if tracer_bytes or history_bytes:
+                    flash('📍 Route codes added to packages (where available).', 'info')
             else:
                 messages = gen(file_bytes, safe_mode=safe_mode)
 
@@ -314,6 +329,7 @@ def tool(tool_id):
                 flash(f'✅ Generated {len(messages)} DSP message(s).', 'success')
 
             store_messages(tool_id, messages)
+
 
         except ValueError as e:
             error = str(e)
