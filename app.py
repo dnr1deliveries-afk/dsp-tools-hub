@@ -33,6 +33,7 @@ from processing.dsp_core import (
     generate_carrier_inv_messages,
     generate_vsa_messages,
     generate_nursery_overuse_messages,
+    generate_ridealong_overuse_messages,
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -168,21 +169,31 @@ TOOLS = {
                        'hint': 'Overused_Nursery_Rou_*.csv', 'required': True}],
         'safe_affected': False,
     },
+    'ridealong_overuse': {
+        'name':      'Ridealong Overuse',
+        'icon':      'bi-people-fill',
+        'emoji':     '👥',
+        'desc':      'Ridealong Route Overuse — Routes flagged for DA count or tenured DA issues',
+        'files':     [{'id': 'csv_file', 'label': 'Ridealong Overuse CSV',
+                       'hint': 'Raw_DataOnly_showing_*.csv', 'required': True}],
+        'safe_affected': False,
+    },
 }
 
 # Map tool_id → generate function
 GENERATORS = {
-    'chase':           generate_chase_messages,
-    'pickups':         generate_pickup_messages,
-    'rostering':       generate_rostering_messages,
-    'stc':             generate_stc_messages,
-    'cc':              generate_cc_messages,
-    'pod':             generate_pod_messages,
-    'noa':             generate_noa_messages,
-    'bags':            generate_bags_messages,
-    'carrier_inv':     generate_carrier_inv_messages,
-    'vsa':             generate_vsa_messages,
-    'nursery_overuse': generate_nursery_overuse_messages,
+    'chase':              generate_chase_messages,
+    'pickups':            generate_pickup_messages,
+    'rostering':          generate_rostering_messages,
+    'stc':                generate_stc_messages,
+    'cc':                 generate_cc_messages,
+    'pod':                generate_pod_messages,
+    'noa':                generate_noa_messages,
+    'bags':               generate_bags_messages,
+    'carrier_inv':        generate_carrier_inv_messages,
+    'vsa':                generate_vsa_messages,
+    'nursery_overuse':    generate_nursery_overuse_messages,
+    'ridealong_overuse':  generate_ridealong_overuse_messages,
 }
 
 

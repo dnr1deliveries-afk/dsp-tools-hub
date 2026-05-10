@@ -1085,3 +1085,107 @@ def generate_nursery_overuse_messages(file_bytes: bytes, safe_mode: bool = False
         messages[dsp] = wrap_message(content)
 
     return messages
+
+
+
+# ============================================================================
+# RIDEALONG OVERUSE
+# ============================================================================
+
+def generate_ridealong_overuse_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+    """
+    Input: Raw_DataOnly_showing_*.csv
+    
+    Identifies Ridealong routes flagged for overuse (DA Count <2 or Two tenured DAs).
+    Groups by DSP -> Date, shows route details and overuse reason.
+    
+    Safe mode: no change (no driver IDs in this report).
+    
+    Columns used:
+        DSP, Route ID, Date, Executed Service Type, Overuse Reason, DA 1 Roster
+    
+    Output: One message per DSP with date-grouped route violations.
+    """
+    # dsp_data[dsp][date_str] = list of route dicts
+    dsp_data = defaultdict(lambda: defaultdict(list))
+    reason_counts = defaultdict(lambda: defaultdict(int))  # dsp -> reason -> count
+
+    for row in _open_csv(file_bytes):
+        dsp = str(row.get('DSP', '') or '').strip().upper()
+        if not dsp:
+            continue
+        
+        route_id = str(row.get('Route ID', '') or '').strip()
+        date_raw = str(row.get('Date', '') or '').strip()
+        exec_svc = str(row.get('Executed Service Type', '') or '').strip()
+        overuse_reason = str(row.get('Overuse Reason', '') or '').strip()
+        da1_roster = str(row.get('DA 1 Roster', '') or '').strip()
+        
+        if not route_id:
+            continue
+        
+        date_str = fmt_date(date_raw)
+        
+        dsp_data[dsp][date_str].append({
+            'route': route_id,
+            'exec_svc': exec_svc,
+            'reason': overuse_reason,
+            'da1_role': da1_roster,
+        })
+        
+        # Count by overuse reason for summary
+        reason_counts[dsp][overuse_reason] += 1
+
+    if not dsp_data:
+        raise ValueError(
+            "No ridealong overuse data found.\n"
+            "Check the file contains 'DSP', 'Route ID', 'Date', "
+            "'Executed Service Type', and 'Overuse Reason' columns."
+        )
+
+    messages = {}
+    for dsp in sorted(dsp_data.keys()):
+        dates_dict = dsp_data[dsp]
+        all_dates = sorted(
+            dates_dict.keys(),
+            key=lambda d: datetime.strptime(d, '%d/%m/%Y') if d else datetime.min
+        )
+        date_from = all_dates[0] if all_dates else ''
+        date_to = all_dates[-1] if all_dates else ''
+        
+        # Total routes overused
+        total_routes = sum(len(routes) for routes in dates_dict.values())
+        
+        # Build summary by reason
+        reasons = reason_counts[dsp]
+        reason_summary = ', '.join(
+            f'{count} {reason}'
+            for reason, count in sorted(reasons.items())
+        )
+        
+        # Build per-date sections
+        sections = []
+        for date_str in all_dates:
+            routes = dates_dict[date_str]
+            
+            headers = ['Route', 'Executed Service Type', 'Overuse Reason', 'DA 1 Role']
+            data_rows = [
+                [r['route'], r['exec_svc'], r['reason'], r['da1_role']]
+                for r in sorted(routes, key=lambda x: x['route'])
+            ]
+            
+            sections.append(
+                f':date: {date_str} ({len(routes)} route{"s" if len(routes) != 1 else ""})\n'
+                + pad_cols(headers, data_rows)
+            )
+        
+        content = (
+            f'Ridealong Overuse — {dsp} — {date_from} to {date_to}\n\n'
+            f'Hi team, please find below Ridealong routes where the route was flagged for overuse. '
+            f'Please provide insight on why these assignments occurred.\n\n'
+            f':bar_chart: Summary: {total_routes} total overuse(s) — {reason_summary}\n\n'
+            + '\n\n'.join(sections)
+        )
+        messages[dsp] = wrap_message(content)
+
+    return messages
