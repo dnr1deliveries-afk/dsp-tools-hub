@@ -1189,3 +1189,234 @@ def generate_ridealong_overuse_messages(file_bytes: bytes, safe_mode: bool = Fal
         messages[dsp] = wrap_message(content)
 
     return messages
+
+
+
+# ============================================================================
+# ============================================================================
+# TRACER BRIDGE
+# ============================================================================
+
+# DSP Name mapping (full name -> short code)
+DSP_NAME_MAP = {
+    'hero parcel logistics limited': 'HPLM',
+    'deliverwize ltd': 'DELL',
+    'dtt deliveries ltd': 'DTTD',
+    'dtt deliveries ltd ': 'DTTD',  # trailing space variant
+    'v1 logistics': 'VILO',
+    'universal courier logistical services limited': 'ULSL',
+    'kmi logistics ltd': 'KMIL',
+    'wac couriers ltd': 'WACC',
+    'danzen logistics ltd': 'DNZN',
+    'dyy ltd': 'DYYL',
+    'molina express ltd': 'MOLI',
+    'alkaia ltd': 'AKTD',
+    'greythorn services': 'GSSL',
+    'csp_company_name': 'CSP',
+}
+
+
+def _normalize_dsp_name(dsp_name: str) -> str:
+    """Convert full DSP name to short code."""
+    if not dsp_name:
+        return 'UNKNOWN'
+    normalized = dsp_name.strip().lower()
+    return DSP_NAME_MAP.get(normalized, dsp_name.strip().upper()[:4])
+
+
+def _parse_bulk_history_returns(history_bytes: bytes) -> dict:
+    """
+    Parse bulk history to find returned packages (WRONG_CYCLE_INDUCT).
+    Returns dict: {tracking_id: return_date}
+    """
+    returns = {}
+    if not history_bytes:
+        return returns
+    
+    for row in _open_csv(history_bytes):
+        tid = row.get('Tracking ID', '').strip()
+        reason = row.get('Reason', '').strip()
+        date_str = row.get('Date', '').strip()
+        
+        if reason == 'WRONG_CYCLE_INDUCT' and tid:
+            if tid not in returns:
+                returns[tid] = fmt_date(date_str)
+    
+    return returns
+
+
+def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: bytes,
+                                     bulk_history_bytes: bytes = None,
+                                     safe_mode: bool = False) -> dict:
+    """
+    Input files:
+        - Not_Recovered_Deep_D_*.csv (required) — Package list with reasons
+        - SearchResults*.csv (required) — DSP lookup via Tracking ID
+        - bulk_history_export_*.csv (optional) — Return detection (WRONG_CYCLE_INDUCT)
+    
+    Generates a tracer bridge showing not recovered packages grouped by DSP,
+    with returned packages separated out.
+    
+    Safe mode: no change (no driver IDs in this report).
+    
+    Output: Single station-level message with DSP breakdown.
+    """
+    # Build DSP lookup from SearchResults
+    dsp_lookup = {}
+    for row in _open_csv(search_bytes):
+        tid = str(row.get('Tracking ID', '') or '').strip()
+        dsp_full = str(row.get('DSP Name', '') or '').strip()
+        if tid and dsp_full:
+            dsp_lookup[tid] = _normalize_dsp_name(dsp_full)
+    
+    # Parse bulk history for returns
+    returns = _parse_bulk_history_returns(bulk_history_bytes)
+    
+    # Parse Not Recovered file
+    packages = []
+    station = ''
+    
+    for row in _open_csv(not_recovered_bytes):
+        tid = str(row.get('TrackingID', '') or '').strip()
+        reason = str(row.get('reason_before_missing', '') or '').strip()
+        is_rejected = str(row.get('is_rejected', '') or '').strip().upper() == 'Y'
+        
+        if not station:
+            station = str(row.get('parent_location', '') or '').strip()
+        
+        # Get shipment value
+        try:
+            value = float(row.get('Shipment Value', 0) or 0)
+        except (ValueError, TypeError):
+            value = 0.0
+        
+        # Normalize reason
+        if not reason or reason == 'NONE':
+            reason = 'NO_REASON'
+        
+        # Get DSP from lookup
+        dsp = dsp_lookup.get(tid, 'UNKNOWN')
+        
+        # Check if returned
+        return_date = returns.get(tid)
+        
+        packages.append({
+            'tid': tid,
+            'dsp': dsp,
+            'reason': reason,
+            'value': value,
+            'is_rejected': is_rejected,
+            'returned': return_date is not None,
+            'return_date': return_date,
+        })
+    
+    if not packages:
+        raise ValueError(
+            "No tracer data found.\n"
+            "Check the Not Recovered file contains 'TrackingID' and 'reason_before_missing' columns,\n"
+            "and the SearchResults file contains 'Tracking ID' and 'DSP Name' columns."
+        )
+    
+    # Separate into categories
+    returned_packages = [p for p in packages if p['returned']]
+    rejected_packages = [p for p in packages if p['is_rejected'] and not p['returned']]
+    outstanding_packages = [p for p in packages if not p['returned'] and not p['is_rejected']]
+    
+    # Calculate totals
+    total = len(packages)
+    total_returned = len(returned_packages)
+    total_rejected = len(rejected_packages)
+    total_outstanding = len(outstanding_packages)
+    total_value = sum(p['value'] for p in outstanding_packages)
+    
+    # Group outstanding by DSP
+    dsp_outstanding = defaultdict(lambda: defaultdict(list))
+    for p in outstanding_packages:
+        dsp_outstanding[p['dsp']][p['reason']].append(p['tid'])
+    
+    # Group returned by DSP
+    dsp_returned = defaultdict(list)
+    for p in returned_packages:
+        dsp_returned[p['dsp']].append(p)
+    
+    # Group rejected by DSP
+    dsp_rejected = defaultdict(int)
+    for p in rejected_packages:
+        dsp_rejected[p['dsp']] += 1
+    
+    # Count by reason across all outstanding
+    reason_totals = defaultdict(int)
+    for p in outstanding_packages:
+        reason_totals[p['reason']] += 1
+    
+    # Build reason summary line
+    reason_summary = ' | '.join(
+        f'{reason}: {count}'
+        for reason, count in sorted(reason_totals.items(), key=lambda x: -x[1])
+    )
+    
+    # Build DSP breakdown for outstanding
+    dsp_lines = []
+    for dsp in sorted(dsp_outstanding.keys(), key=lambda d: -sum(len(t) for t in dsp_outstanding[d].values())):
+        reasons = dsp_outstanding[dsp]
+        dsp_total = sum(len(tids) for tids in reasons.values())
+        
+        reason_parts = []
+        for reason, tids in sorted(reasons.items(), key=lambda x: -len(x[1])):
+            reason_parts.append(f'{reason}: {len(tids)}')
+        
+        dsp_lines.append(f'{dsp} ({dsp_total}) — {", ".join(reason_parts)}')
+    
+    # Get current date for header
+    today = datetime.now()
+    week_num = today.isocalendar()[1]
+    
+    # Build the bridge message
+    lines = []
+    lines.append(f':bar_chart: {station} TRACER BRIDGE — Week {week_num} | {today.strftime("%d/%m/%Y")}')
+    lines.append(DIVIDER)
+    lines.append('')
+    lines.append(':clipboard: SUMMARY')
+    lines.append(f'Total Packages: {total}')
+    lines.append(f'Returned to Station: {total_returned}')
+    lines.append(f'Customer Rejected: {total_rejected}')
+    lines.append(f'Still Outstanding: {total_outstanding} (£{total_value:,.2f})')
+    lines.append('')
+    
+    # Outstanding by DSP
+    if outstanding_packages:
+        lines.append(f':red_circle: NOT RECOVERED BY DSP ({total_outstanding})')
+        lines.append(DIVIDER)
+        lines.extend(dsp_lines)
+        lines.append('')
+    
+    # Reason breakdown
+    if reason_totals:
+        lines.append(':mag: REASON BREAKDOWN')
+        lines.append(reason_summary)
+        lines.append('')
+    
+    # Returned packages
+    if returned_packages:
+        lines.append(f':large_green_circle: RETURNED TO STATION ({total_returned})')
+        lines.append(DIVIDER)
+        for dsp in sorted(dsp_returned.keys()):
+            pkgs = dsp_returned[dsp]
+            for p in pkgs:
+                lines.append(f'{p["tid"]} — {dsp} — Returned {p["return_date"]}')
+        lines.append('')
+    
+    # Rejected packages
+    if rejected_packages:
+        lines.append(f':large_yellow_circle: CUSTOMER REJECTED ({total_rejected})')
+        lines.append(DIVIDER)
+        rejected_str = ' | '.join(
+            f'{dsp}: {count}'
+            for dsp, count in sorted(dsp_rejected.items(), key=lambda x: -x[1])
+        )
+        lines.append(rejected_str)
+    
+    content = '\n'.join(lines)
+    messages = {station or 'STATION': wrap_message(content)}
+    
+    return messages

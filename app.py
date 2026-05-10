@@ -20,7 +20,6 @@ from collections import defaultdict
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, session, jsonify
-)
 from processing.dsp_core import (
     generate_chase_messages,
     generate_pickup_messages,
@@ -34,6 +33,7 @@ from processing.dsp_core import (
     generate_vsa_messages,
     generate_nursery_overuse_messages,
     generate_ridealong_overuse_messages,
+    generate_tracer_bridge_messages,
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -178,6 +178,19 @@ TOOLS = {
                        'hint': 'Raw_DataOnly_showing_*.csv', 'required': True}],
         'safe_affected': False,
     },
+    'tracer_bridge': {
+        'name':      'Tracer Bridge',
+        'icon':      'bi-clipboard2-pulse',
+        'emoji':     '📊',
+        'desc':      'Not Recovered packages — DSP breakdown with return detection',
+        'files':     [{'id': 'not_recovered_file', 'label': 'Not Recovered Deep Dive CSV',
+                       'hint': 'Not_Recovered_Deep_D_*.csv', 'required': True},
+                      {'id': 'search_file', 'label': 'SearchResults CSV',
+                       'hint': 'SearchResults*.csv — DSP lookup', 'required': True},
+                      {'id': 'bulk_history_file', 'label': 'Bulk History Export (optional)',
+                       'hint': 'bulk_history_export*.csv — detects returned packages', 'required': False}],
+        'safe_affected': False,
+    },
 }
 
 # Map tool_id → generate function
@@ -194,6 +207,7 @@ GENERATORS = {
     'vsa':                generate_vsa_messages,
     'nursery_overuse':    generate_nursery_overuse_messages,
     'ridealong_overuse':  generate_ridealong_overuse_messages,
+    'tracer_bridge':      generate_tracer_bridge_messages,
 }
 
 
@@ -341,7 +355,31 @@ def tool(tool_id):
                     flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from Slack).', 'info')
                 # v1.8: Notify if route codes were added
                 if tracer_bytes or history_bytes:
-                    flash('📍 Route codes added to packages (where available).', 'info')
+                    flash('🗺️ Route codes added to packages (where available).', 'info')
+            elif tool_id == 'tracer_bridge':
+                # Tracer Bridge: Not Recovered + SearchResults + optional Bulk History
+                not_recovered_file = request.files.get('not_recovered_file')
+                search_file_tb = request.files.get('search_file')
+                bulk_history_file = request.files.get('bulk_history_file')
+                
+                if not not_recovered_file or not not_recovered_file.filename:
+                    raise ValueError('Please upload the Not Recovered Deep Dive CSV.')
+                if not search_file_tb or not search_file_tb.filename:
+                    raise ValueError('Please upload the SearchResults CSV for DSP lookup.')
+                
+                not_recovered_bytes = not_recovered_file.read()
+                search_bytes_tb = search_file_tb.read()
+                bulk_history_bytes = bulk_history_file.read() if bulk_history_file and bulk_history_file.filename else None
+                
+                messages = gen(
+                    not_recovered_bytes,
+                    search_bytes_tb,
+                    bulk_history_bytes=bulk_history_bytes,
+                    safe_mode=safe_mode
+                )
+                
+                if bulk_history_bytes:
+                    flash('🔍 Bulk history analyzed for returned packages.', 'info')
             else:
                 messages = gen(file_bytes, safe_mode=safe_mode)
 
