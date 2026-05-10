@@ -1328,11 +1328,12 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     total_rejected = len(rejected_packages)
     total_outstanding = len(outstanding_packages)
     total_value = sum(p['value'] for p in outstanding_packages)
-    
-    # Group outstanding by DSP
+    # Group outstanding by DSP - track units and value per DSP
     dsp_outstanding = defaultdict(lambda: defaultdict(list))
+    dsp_values = defaultdict(float)
     for p in outstanding_packages:
         dsp_outstanding[p['dsp']][p['reason']].append(p['tid'])
+        dsp_values[p['dsp']] += p['value']
     
     # Group returned by DSP
     dsp_returned = defaultdict(list)
@@ -1355,17 +1356,18 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
         for reason, count in sorted(reason_totals.items(), key=lambda x: -x[1])
     )
     
-    # Build DSP breakdown for outstanding
+    # Build DSP breakdown for outstanding - now includes units and value
     dsp_lines = []
     for dsp in sorted(dsp_outstanding.keys(), key=lambda d: -sum(len(t) for t in dsp_outstanding[d].values())):
         reasons = dsp_outstanding[dsp]
-        dsp_total = sum(len(tids) for tids in reasons.values())
+        dsp_units = sum(len(tids) for tids in reasons.values())
+        dsp_value = dsp_values[dsp]
         
         reason_parts = []
         for reason, tids in sorted(reasons.items(), key=lambda x: -len(x[1])):
             reason_parts.append(f'{reason}: {len(tids)}')
         
-        dsp_lines.append(f'{dsp} ({dsp_total}) — {", ".join(reason_parts)}')
+        dsp_lines.append(f'{dsp} — {dsp_units} units (£{dsp_value:,.2f}) — {", ".join(reason_parts)}')
     
     # Get current date for header
     today = datetime.now()
@@ -1377,17 +1379,18 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     lines.append(DIVIDER)
     lines.append('')
     lines.append(':clipboard: SUMMARY')
-    lines.append(f'Total Packages: {total}')
-    lines.append(f'Returned to Station: {total_returned}')
-    lines.append(f'Customer Rejected: {total_rejected}')
-    lines.append(f'Still Outstanding: {total_outstanding} (£{total_value:,.2f})')
+    lines.append(f'Total Units: {total}')
+    lines.append(f'  • Returned to Station: {total_returned} units')
+    lines.append(f'  • Customer Rejected: {total_rejected} units')
+    lines.append(f'  • Still Outstanding: {total_outstanding} units (£{total_value:,.2f})')
     lines.append('')
     
     # Outstanding by DSP
     if outstanding_packages:
-        lines.append(f':red_circle: NOT RECOVERED BY DSP ({total_outstanding})')
+        lines.append(f':red_circle: NOT RECOVERED BY DSP ({total_outstanding} units)')
         lines.append(DIVIDER)
         lines.extend(dsp_lines)
+        lines.append('')
         lines.append('')
     
     # Reason breakdown
@@ -1398,7 +1401,7 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     
     # Returned packages
     if returned_packages:
-        lines.append(f':large_green_circle: RETURNED TO STATION ({total_returned})')
+        lines.append(f':large_green_circle: RETURNED TO STATION ({total_returned} units)')
         lines.append(DIVIDER)
         for dsp in sorted(dsp_returned.keys()):
             pkgs = dsp_returned[dsp]
@@ -1408,7 +1411,7 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     
     # Rejected packages
     if rejected_packages:
-        lines.append(f':large_yellow_circle: CUSTOMER REJECTED ({total_rejected})')
+        lines.append(f':large_yellow_circle: CUSTOMER REJECTED ({total_rejected} units)')
         lines.append(DIVIDER)
         rejected_str = ' | '.join(
             f'{dsp}: {count}'
