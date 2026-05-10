@@ -1388,11 +1388,11 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
         lines.extend(dsp_lines)
         lines.append('')
     
-    # Reason breakdown
-    if reason_totals:
-        lines.append('REASON BREAKDOWN')
-        lines.append(reason_summary)
-        lines.append('')
+    # Root Cause and Action fields
+    lines.append('RC:')
+    lines.append('')
+    lines.append('AC:')
+    lines.append('')
     
     # Returned packages
     if returned_packages:
