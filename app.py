@@ -329,10 +329,12 @@ def tool(tool_id):
             history_file = request.files.get('history_file')  # v1.6: optional bulk history
             tracer_file  = request.files.get('tracer_file')   # v1.8: optional tracer for route codes
 
-            if not csv_file or not csv_file.filename:
-                raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
+            # Skip generic csv_file validation for tools with custom file handling
+            if tool_id not in ('tracer_bridge',):
+                if not csv_file or not csv_file.filename:
+                    raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
+                file_bytes = csv_file.read()
 
-            file_bytes   = csv_file.read()
             search_bytes = search_file.read() if search_file and search_file.filename else None
             history_bytes = history_file.read() if history_file and history_file.filename else None
             tracer_bytes = tracer_file.read() if tracer_file and tracer_file.filename else None
