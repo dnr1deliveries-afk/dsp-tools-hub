@@ -338,6 +338,8 @@ def tool(tool_id):
                 history_bytes = history_file.read() if history_file and history_file.filename else None
                 tracer_bytes = tracer_file.read() if tracer_file and tracer_file.filename else None
 
+            gen = GENERATORS[tool_id]
+
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
             elif tool_id == 'chase':
