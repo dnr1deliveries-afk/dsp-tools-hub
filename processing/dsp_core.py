@@ -1312,27 +1312,27 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     
     if not packages:
         raise ValueError(
-            "No tracer data found.\n"
             "Check the Not Recovered file contains 'TrackingID' and 'reason_before_missing' columns,\n"
             "and the SearchResults file contains 'Tracking ID' and 'DSP Name' columns."
         )
     
     # Separate into categories
+    # Returned = has WRONG_CYCLE_INDUCT in bulk history
+    # Not recovered = everything else (including rejected, since they haven't been returned)
     returned_packages = [p for p in packages if p['returned']]
-    rejected_packages = [p for p in packages if p['is_rejected'] and not p['returned']]
-    outstanding_packages = [p for p in packages if not p['returned'] and not p['is_rejected']]
+    not_recovered_packages = [p for p in packages if not p['returned']]
     
     # Calculate totals
     total = len(packages)
     total_returned = len(returned_packages)
-    total_rejected = len(rejected_packages)
-    total_outstanding = len(outstanding_packages)
-    total_value = sum(p['value'] for p in outstanding_packages)
-    # Group outstanding by DSP - track units and value per DSP
-    dsp_outstanding = defaultdict(lambda: defaultdict(list))
+    total_not_recovered = len(not_recovered_packages)
+    total_value = sum(p['value'] for p in not_recovered_packages)
+    
+    # Group not recovered by DSP - track shipments and value per DSP
+    dsp_not_recovered = defaultdict(lambda: defaultdict(list))
     dsp_values = defaultdict(float)
-    for p in outstanding_packages:
-        dsp_outstanding[p['dsp']][p['reason']].append(p['tid'])
+    for p in not_recovered_packages:
+        dsp_not_recovered[p['dsp']][p['reason']].append(p['tid'])
         dsp_values[p['dsp']] += p['value']
     
     # Group returned by DSP
@@ -1340,26 +1340,10 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     for p in returned_packages:
         dsp_returned[p['dsp']].append(p)
     
-    # Group rejected by DSP
-    dsp_rejected = defaultdict(int)
-    for p in rejected_packages:
-        dsp_rejected[p['dsp']] += 1
-    
-    # Count by reason across all outstanding
-    reason_totals = defaultdict(int)
-    for p in outstanding_packages:
-        reason_totals[p['reason']] += 1
-    
-    # Build reason summary line
-    reason_summary = ' | '.join(
-        f'{reason}: {count}'
-        for reason, count in sorted(reason_totals.items(), key=lambda x: -x[1])
-    )
-    
-    # Build DSP breakdown for outstanding - now includes shipments and value
+    # Build DSP breakdown for not recovered - includes shipments and value
     dsp_lines = []
-    for dsp in sorted(dsp_outstanding.keys(), key=lambda d: -sum(len(t) for t in dsp_outstanding[d].values())):
-        reasons = dsp_outstanding[dsp]
+    for dsp in sorted(dsp_not_recovered.keys(), key=lambda d: -sum(len(t) for t in dsp_not_recovered[d].values())):
+        reasons = dsp_not_recovered[dsp]
         dsp_shipments = sum(len(tids) for tids in reasons.values())
         dsp_value = dsp_values[dsp]
         
@@ -1372,19 +1356,20 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     # Get current date for header
     today = datetime.now()
     week_num = today.isocalendar()[1]
+    
+    # Build message
     lines = []
     lines.append(f'{station} TRACER BRIDGE — Week {week_num} | {today.strftime("%d/%m/%Y")}')
     lines.append('')
     lines.append('SUMMARY')
     lines.append(f'Total Shipments: {total}')
     lines.append(f'  Returned to Station: {total_returned} shipments')
-    lines.append(f'  Customer Rejected: {total_rejected} shipments')
-    lines.append(f'  Still Outstanding: {total_outstanding} shipments (£{total_value:,.2f})')
+    lines.append(f'  Not Recovered: {total_not_recovered} shipments (£{total_value:,.2f})')
     lines.append('')
     
-    # Outstanding by DSP
-    if outstanding_packages:
-        lines.append(f'NOT RECOVERED BY DSP ({total_outstanding} shipments)')
+    # Not recovered by DSP
+    if not_recovered_packages:
+        lines.append(f'NOT RECOVERED BY DSP ({total_not_recovered} shipments)')
         lines.extend(dsp_lines)
         lines.append('')
     
@@ -1401,16 +1386,6 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
             pkgs = dsp_returned[dsp]
             for p in pkgs:
                 lines.append(f'{p["tid"]} — {dsp} — Returned {p["return_date"]}')
-        lines.append('')
-    
-    # Rejected packages
-    if rejected_packages:
-        lines.append(f'CUSTOMER REJECTED ({total_rejected} shipments)')
-        rejected_str = ' | '.join(
-            f'{dsp}: {count}'
-            for dsp, count in sorted(dsp_rejected.items(), key=lambda x: -x[1])
-        )
-        lines.append(rejected_str)
     
     content = '\n'.join(lines)
     messages = {station or 'STATION': content}
