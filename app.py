@@ -334,12 +334,9 @@ def tool(tool_id):
                 if not csv_file or not csv_file.filename:
                     raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
                 file_bytes = csv_file.read()
-
-            search_bytes = search_file.read() if search_file and search_file.filename else None
-            history_bytes = history_file.read() if history_file and history_file.filename else None
-            tracer_bytes = tracer_file.read() if tracer_file and tracer_file.filename else None
-
-            gen = GENERATORS[tool_id]
+                search_bytes = search_file.read() if search_file and search_file.filename else None
+                history_bytes = history_file.read() if history_file and history_file.filename else None
+                tracer_bytes = tracer_file.read() if tracer_file and tracer_file.filename else None
 
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
