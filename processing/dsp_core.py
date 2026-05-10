@@ -1275,11 +1275,13 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     # Parse Not Recovered file
     packages = []
     station = ''
+    today = datetime.now().date()
     
     for row in _open_csv(not_recovered_bytes):
         tid = str(row.get('TrackingID', '') or '').strip()
         reason = str(row.get('reason_before_missing', '') or '').strip()
         is_rejected = str(row.get('is_rejected', '') or '').strip().upper() == 'Y'
+        missing_date_str = str(row.get('missing_date', '') or '').strip()
         
         if not station:
             station = str(row.get('parent_location', '') or '').strip()
@@ -1300,6 +1302,16 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
         # Check if returned
         return_date = returns.get(tid)
         
+        # Calculate age bucket (D-1 vs >D-1)
+        is_d1 = False
+        if missing_date_str:
+            try:
+                missing_date = datetime.strptime(missing_date_str.split(' ')[0], '%Y-%m-%d').date()
+                days_old = (today - missing_date).days
+                is_d1 = days_old <= 1
+            except (ValueError, TypeError):
+                pass
+        
         packages.append({
             'tid': tid,
             'dsp': dsp,
@@ -1308,8 +1320,8 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
             'is_rejected': is_rejected,
             'returned': return_date is not None,
             'return_date': return_date,
+            'is_d1': is_d1,
         })
-    
     if not packages:
         raise ValueError(
             "Check the Not Recovered file contains 'TrackingID' and 'reason_before_missing' columns,\n"
@@ -1318,7 +1330,6 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     
     # Separate into categories
     # Returned = has WRONG_CYCLE_INDUCT in bulk history
-    # Not recovered = everything else (including rejected, since they haven't been returned)
     returned_packages = [p for p in packages if p['returned']]
     not_recovered_packages = [p for p in packages if not p['returned']]
     
@@ -1328,38 +1339,59 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     total_not_recovered = len(not_recovered_packages)
     total_value = sum(p['value'] for p in not_recovered_packages)
     
-    # Group not recovered by DSP - track shipments and value per DSP
-    dsp_not_recovered = defaultdict(lambda: defaultdict(list))
-    dsp_values = defaultdict(float)
+    # Group not recovered by DSP and age bucket (D-1 vs >D-1)
+    # dsp_data[dsp] = {'d1': [packages], 'older': [packages]}
+    dsp_data = defaultdict(lambda: {'d1': [], 'older': []})
     for p in not_recovered_packages:
-        dsp_not_recovered[p['dsp']][p['reason']].append(p['tid'])
-        dsp_values[p['dsp']] += p['value']
+        if p['is_d1']:
+            dsp_data[p['dsp']]['d1'].append(p)
+        else:
+            dsp_data[p['dsp']]['older'].append(p)
     
     # Group returned by DSP
     dsp_returned = defaultdict(list)
     for p in returned_packages:
         dsp_returned[p['dsp']].append(p)
     
-    # Build DSP breakdown for not recovered - includes shipments and value
+    # Build DSP breakdown with D-1 and >D-1 separation
     dsp_lines = []
-    for dsp in sorted(dsp_not_recovered.keys(), key=lambda d: -sum(len(t) for t in dsp_not_recovered[d].values())):
-        reasons = dsp_not_recovered[dsp]
-        dsp_shipments = sum(len(tids) for tids in reasons.values())
-        dsp_value = dsp_values[dsp]
+    for dsp in sorted(dsp_data.keys(), key=lambda d: -(len(dsp_data[d]['d1']) + len(dsp_data[d]['older']))):
+        d1_pkgs = dsp_data[dsp]['d1']
+        older_pkgs = dsp_data[dsp]['older']
         
-        reason_parts = []
-        for reason, tids in sorted(reasons.items(), key=lambda x: -len(x[1])):
-            reason_parts.append(f'{reason}: {len(tids)}')
+        dsp_total = len(d1_pkgs) + len(older_pkgs)
+        dsp_value = sum(p['value'] for p in d1_pkgs) + sum(p['value'] for p in older_pkgs)
         
-        dsp_lines.append(f'{dsp} — {dsp_shipments} shipments (£{dsp_value:,.2f}) — {", ".join(reason_parts)}')
+        # Count reasons for each bucket
+        d1_reasons = defaultdict(int)
+        for p in d1_pkgs:
+            d1_reasons[p['reason']] += 1
+        
+        older_reasons = defaultdict(int)
+        for p in older_pkgs:
+            older_reasons[p['reason']] += 1
+        
+        # Format D-1 line
+        d1_count = len(d1_pkgs)
+        d1_value = sum(p['value'] for p in d1_pkgs)
+        d1_reason_str = ', '.join(f'{r}: {c}' for r, c in sorted(d1_reasons.items(), key=lambda x: -x[1])) if d1_reasons else '-'
+        
+        # Format >D-1 line
+        older_count = len(older_pkgs)
+        older_value = sum(p['value'] for p in older_pkgs)
+        older_reason_str = ', '.join(f'{r}: {c}' for r, c in sorted(older_reasons.items(), key=lambda x: -x[1])) if older_reasons else '-'
+        
+        dsp_lines.append(f'{dsp} — {dsp_total} shipments (£{dsp_value:,.2f})')
+        dsp_lines.append(f'  D-1: {d1_count} shipments (£{d1_value:,.2f}) — {d1_reason_str}')
+        dsp_lines.append(f'  >D-1: {older_count} shipments (£{older_value:,.2f}) — {older_reason_str}')
     
     # Get current date for header
-    today = datetime.now()
-    week_num = today.isocalendar()[1]
+    now = datetime.now()
+    week_num = now.isocalendar()[1]
     
     # Build message
     lines = []
-    lines.append(f'{station} TRACER BRIDGE — Week {week_num} | {today.strftime("%d/%m/%Y")}')
+    lines.append(f'{station} TRACER BRIDGE — Week {week_num} | {now.strftime("%d/%m/%Y")}')
     lines.append('')
     lines.append('SUMMARY')
     lines.append(f'Total Shipments: {total}')
