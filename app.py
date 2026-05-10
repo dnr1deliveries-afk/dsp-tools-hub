@@ -20,6 +20,7 @@ from collections import defaultdict
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, session, jsonify
+)
 from processing.dsp_core import (
     generate_chase_messages,
     generate_pickup_messages,
