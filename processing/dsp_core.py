@@ -1,5 +1,5 @@
 """
-DSP Tools Hub — Processing Engine v1.8
+DSP Tools Hub — Processing Engine v1.9
 Ported from DSP_Tools_Hub.py (desktop tkinter app) v1.6
 All generate_* functions accept safe_mode=False (default).
 
@@ -14,9 +14,14 @@ v1.7 - Chase tool: expanded mistaken return detection
        Condition 1: WRONG_CYCLE_INDUCT on D-1 after 13:00
        Condition 2: INDUCTED + PACKAGE_STATE_UPDATE from 23:30 D-1 to present
 v1.8 - Chase tool: Route Code lookup from Tracer file (with Bulk History fallback)
-       Packages now display with their assigned Route Code in messages
+v1.9 - Chase tool: Grouped by Reason Code with Root Cause input fields
+v2.0 - NOA tool: Simplified to DSP-level counts (Transporter ID removed from source)
 """
 import csv
+import io
+import re
+from collections import defaultdict
+from datetime import datetime, timedelta
 import io
 import re
 from collections import defaultdict
@@ -224,90 +229,97 @@ def generate_chase_messages(file_bytes: bytes, history_bytes: bytes = None,
         - messages_dict: {dsp: message_text} for Slack (excludes returned)
         - returned_by_dsp_dict: {dsp: [list of tracking IDs]} for web display only
     
-    v1.8: Now includes Route Code lookup from Tracer (with Bulk History fallback)
+    v1.8: Route Code lookup from Tracer (with Bulk History fallback)
+    v1.9: Grouped by Reason Code with Root Cause input fields
     """
     history = parse_bulk_history(history_bytes) if history_bytes else {}
     
-    # v1.8: Build route code lookups
+    # Build route code lookups
     tracer_routes = parse_tracer_routes(tracer_bytes) if tracer_bytes else {}
     history_routes = parse_bulk_history_routes(history_bytes) if history_bytes else {}
     
-    dsp_data = defaultdict(lambda: {'chase': [], 'missing': [], 'returned': []})
+    # v1.9: Group by DSP -> Reason Code -> list of {tid, route}
+    dsp_data = defaultdict(lambda: {'by_reason': defaultdict(list), 'returned': []})
 
     for row in _open_csv(file_bytes):
         dsp    = row.get('DSP Name', '').strip()
         tid    = row.get('trackingId', '').strip()
-        reason = row.get('Attempt Reason Code', '').strip()
+        reason = row.get('Attempt Reason Code', '').strip() or 'UNKNOWN'
         
         if not (dsp and tid):
             continue
         
-        # v1.8: Get route code for this tracking ID
+        # Get route code for this tracking ID
         route_code = get_route_code(tid, tracer_routes, history_routes)
         
         if history:
             is_mistaken, _ = is_mistaken_return(tid, history)
             if is_mistaken:
-                dsp_data[dsp]['returned'].append({'tid': tid, 'route': route_code})
+                dsp_data[dsp]['returned'].append({'tid': tid, 'route': route_code, 'reason': reason})
                 continue
         
-        if reason == 'ITEMS_MISSING':
-            dsp_data[dsp]['missing'].append({'tid': tid, 'route': route_code})
-        else:
-            dsp_data[dsp]['chase'].append({'tid': tid, 'route': route_code})
+        # v1.9: Group by actual reason code
+        dsp_data[dsp]['by_reason'][reason].append({'tid': tid, 'route': route_code})
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
     returned_by_dsp = {}
     
     for dsp in sorted(dsp_data.keys()):
-        # Sort by route code (numeric extraction) then by tracking ID
+        # Sort helper
         def sort_key(item):
             route_num = _extract_route_number(item['route']) if item['route'] else 9999
             return (route_num, item['tid'])
         
-        chase    = sorted(dsp_data[dsp]['chase'], key=sort_key)
-        missing  = sorted(dsp_data[dsp]['missing'], key=sort_key)
-        returned = sorted(dsp_data[dsp]['returned'], key=sort_key)
+        by_reason = dsp_data[dsp]['by_reason']
+        returned  = sorted(dsp_data[dsp]['returned'], key=sort_key)
         
         if returned:
             returned_by_dsp[dsp] = [r['tid'] for r in returned]
         
-        sections = []
-        if chase:
-            # v1.8: Include route code in output
-            lines = [f'To Chase ({len(chase)}):']
-            for item in chase:
-                route_display = f' [{item["route"]}]' if item['route'] else ''
-                lines.append(f'  {item["tid"]}{route_display}')
-            sections.append('\n'.join(lines))
-
-        if missing:
-            # v1.8: Include route code in output
-            lines = [f'Driver Marked Missing ({len(missing)}):']
-            for item in missing:
-                route_display = f' [{item["route"]}]' if item['route'] else ''
-                lines.append(f'  {item["tid"]}{route_display}')
-            sections.append('\n'.join(lines))
-
-        if not sections:
+        if not by_reason:
             continue
+        
+        # v1.9: Build sections grouped by reason code
+        sections = []
+        total_packages = 0
+        
+        # Sort reasons alphabetically for consistent output
+        for reason in sorted(by_reason.keys()):
+            items = sorted(by_reason[reason], key=sort_key)
+            total_packages += len(items)
+            
+            # Format reason code for display (replace underscores with spaces)
+            reason_display = reason.replace('_', ' ').title()
+            
+            lines = [f'{reason_display} ({len(items)}):']
+            for item in items:
+                route_display = f' [{item["route"]}]' if item['route'] else ''
+                lines.append(f'  {item["tid"]}{route_display}')
+            
+            # Add Root Cause input field after each reason section
+            lines.append('')
+            lines.append('Root Cause: _______________')
+            
+            sections.append('\n'.join(lines))
 
         content = (
             f'Outstanding Shipments — {dsp}\n'
-            f'Updated: {today}\n\n'
+            f'Updated: {today}\n'
+            f'Total Packages: {total_packages}\n\n'
             f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
             + '\n\n'.join(sections) +
-            '\n\nAction Required:\n'
-            '1. Contact the driver\n'
-            '2. Confirm the return\n'
-            '3. Update this thread\n\n'
+            '\n\n' + DIVIDER + '\n\n'
+            'Actions:\n'
+            '1. Contact the driver to locate package\n'
+            '2. Confirm return ETA to station\n'
+            '3. Update this thread with status\n'
+            '4. Escalate if no response within 2 hours\n\n'
             'Appreciate your support.'
         )
         messages[dsp] = wrap_message(content)
     
     return messages, returned_by_dsp
-
 
 # ============================================================================
 # DSP PICKUPS
@@ -709,56 +721,62 @@ def generate_pod_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
     return messages
 
-
 # ============================================================================
-# NOTIFY OF ARRIVAL (NOA)
+# NOTIFY OF ARRIVAL (NOA) - v2.0
 # ============================================================================
 
 def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
-    first_date = ''
-    dsp_data   = defaultdict(lambda: defaultdict(int))
+    """
+    Generate NOA summary messages per DSP.
+    
+    v2.0: Simplified to DSP-level counts only.
+          Transporter ID column was removed from source file.
+    """
+    dates_seen = set()
+    dsp_counts = defaultdict(int)
 
     for row in _open_csv(file_bytes):
         if str(row.get('chat_reason_code', '') or '').strip() != 'NOTIFY_OF_ARRIVAL':
             continue
-        dsp      = str(row.get('DSP', '') or '').strip()
-        trans_id = str(row.get('Transporter ID', '') or '').strip()
-        scan_id  = str(row.get('Scannable ID', '') or '').strip()
-        if not dsp or not trans_id or not scan_id:
+        dsp     = str(row.get('DSP', '') or '').strip()
+        scan_id = str(row.get('Scannable ID', '') or '').strip()
+        if not dsp or not scan_id:
             continue
-        if not first_date:
-            first_date = fmt_date(row.get('Event Date', ''))
-        dsp_data[dsp][trans_id] += 1
+        
+        event_date = fmt_date(row.get('Event Date', ''))
+        if event_date:
+            dates_seen.add(event_date)
+        
+        dsp_counts[dsp] += 1
 
-    if not dsp_data:
+    if not dsp_counts:
         raise ValueError("No NOTIFY_OF_ARRIVAL rows found. Check the correct Exceptions CSV is selected.")
 
+    date_range = format_date_range(list(dates_seen)) if dates_seen else datetime.now().strftime('%d/%m/%Y')
+    
     intro = (
         'Hi all — Notify of Arrival has a positive impact on OTR safety, Concessions, '
         'CC, DCR and overall customer experience. '
-        'Below are all drivers who utilised NOA on the date shown.'
+        'Below is the NOA summary for your DSP.'
     )
 
     messages = {}
-    for dsp in sorted(dsp_data.keys()):
-        counts         = dsp_data[dsp]
-        sorted_entries = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        grand_total    = sum(counts.values())
-
-        headers   = ['Driver', 'NOA Count']
-        data_rows = []
-        for tid, count in sorted_entries:
-            display = mask_id(tid) if safe_mode else tid
-            data_rows.append([display, str(count)])
-        data_rows.append(['Total', str(grand_total)])
-
+    for dsp in sorted(dsp_counts.keys()):
+        count = dsp_counts[dsp]
+        
         content = (
-            f'Notify of Arrival — {dsp} — {first_date}\n\n'
+            f'Notify of Arrival — {dsp} — {date_range}\n\n'
             f'{intro}\n\n'
-            + pad_cols(headers, data_rows)
+            f'Total NOA Events: {count}\n\n'
+            'Keep up the great work! 🎉'
         )
         messages[dsp] = wrap_message(content)
 
+    return messages
+
+
+# ============================================================================
+# UNRETURNED BAGS
     return messages
 
 
