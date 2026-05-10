@@ -982,3 +982,106 @@ def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         messages[dsp] = wrap_message(content)
 
     return messages
+
+
+
+# ============================================================================
+# NURSERY OVERUSE
+# ============================================================================
+
+def generate_nursery_overuse_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+    """
+    Input: Overused_Nursery_Rou_*.csv
+    
+    Identifies routes where a Standard DA was assigned to a Nursery-level route.
+    Groups by DSP -> Date, shows planned vs actual DA tenure level.
+    
+    Safe mode: no change (no driver IDs in this report).
+    
+    Columns used:
+        DSP, Route ID, Date, Actual Level Tenure DA, Planned Level Tenure DA
+    
+    Output: One message per DSP with date-grouped route violations.
+    """
+    # dsp_data[dsp][date_str] = list of route dicts
+    dsp_data = defaultdict(lambda: defaultdict(list))
+    level_counts = defaultdict(lambda: defaultdict(int))  # dsp -> level -> count
+
+    for row in _open_csv(file_bytes):
+        dsp = str(row.get('DSP', '') or '').strip().upper()
+        if not dsp:
+            continue
+        
+        route_id = str(row.get('Route ID', '') or '').strip()
+        date_raw = str(row.get('Date', '') or '').strip()
+        actual = str(row.get('Actual Level Tenure DA', '') or '').strip()
+        planned = str(row.get('Planned Level Tenure DA', '') or '').strip()
+        
+        if not route_id or not planned:
+            continue
+        
+        date_str = fmt_date(date_raw)
+        
+        dsp_data[dsp][date_str].append({
+            'route': route_id,
+            'planned': planned,
+            'actual': actual,
+        })
+        
+        # Count by nursery level for summary
+        level_counts[dsp][planned] += 1
+
+    if not dsp_data:
+        raise ValueError(
+            "No nursery overuse data found.\n"
+            "Check the file contains 'DSP', 'Route ID', 'Date', "
+            "'Actual Level Tenure DA', and 'Planned Level Tenure DA' columns."
+        )
+
+    messages = {}
+    for dsp in sorted(dsp_data.keys()):
+        dates_dict = dsp_data[dsp]
+        all_dates = sorted(
+            dates_dict.keys(),
+            key=lambda d: datetime.strptime(d, '%d/%m/%Y') if d else datetime.min
+        )
+        date_from = all_dates[0] if all_dates else ''
+        date_to = all_dates[-1] if all_dates else ''
+        
+        # Total routes overused
+        total_routes = sum(len(routes) for routes in dates_dict.values())
+        
+        # Build summary by level
+        levels = level_counts[dsp]
+        level_summary = ', '.join(
+            f'{count} {level.replace("Nursery Route ", "")}'
+            for level, count in sorted(levels.items())
+        )
+        
+        # Build per-date sections
+        sections = []
+        for date_str in all_dates:
+            routes = dates_dict[date_str]
+            
+            headers = ['Route', 'Planned DA Level', 'Actual DA Level']
+            data_rows = [
+                [r['route'], r['planned'], r['actual']]
+                for r in sorted(routes, key=lambda x: x['route'])
+            ]
+            
+            sections.append(
+                f':date: {date_str} ({len(routes)} route{"s" if len(routes) != 1 else ""})\n'
+                + pad_cols(headers, data_rows)
+            )
+        
+        content = (
+            f'Nursery Route Overuse — {dsp} — {date_from} to {date_to}\n\n'
+            f'Hi team, please find below the Nursery Route assignments where a Standard DA '
+            f'was assigned to a route planned for a Nursery-level DA. '
+            f'Please provide insight on why these assignments occurred.\n\n'
+            f':bar_chart: Summary: {total_routes} total overuse(s) — {level_summary}\n\n'
+            + '\n\n'.join(sections)
+        )
+        messages[dsp] = wrap_message(content)
+
+    return messages

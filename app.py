@@ -32,6 +32,7 @@ from processing.dsp_core import (
     generate_bags_messages,
     generate_carrier_inv_messages,
     generate_vsa_messages,
+    generate_nursery_overuse_messages,
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -158,20 +159,30 @@ TOOLS = {
         'safe_affected': True,
         'safe_note':  'Safe Mode: VINs replaced with anonymised VIN-XXXX tokens',
     },
+    'nursery_overuse': {
+        'name':      'Nursery Overuse',
+        'icon':      'bi-person-fill-exclamation',
+        'emoji':     '🌱',
+        'desc':      'Nursery Route Overuse — Standard DAs assigned to Nursery-level routes',
+        'files':     [{'id': 'csv_file', 'label': 'Nursery Overuse CSV',
+                       'hint': 'Overused_Nursery_Rou_*.csv', 'required': True}],
+        'safe_affected': False,
+    },
 }
 
 # Map tool_id → generate function
 GENERATORS = {
-    'chase':       generate_chase_messages,
-    'pickups':     generate_pickup_messages,
-    'rostering':   generate_rostering_messages,
-    'stc':         generate_stc_messages,
-    'cc':          generate_cc_messages,
-    'pod':         generate_pod_messages,
-    'noa':         generate_noa_messages,
-    'bags':        generate_bags_messages,
-    'carrier_inv': generate_carrier_inv_messages,
-    'vsa':         generate_vsa_messages,
+    'chase':           generate_chase_messages,
+    'pickups':         generate_pickup_messages,
+    'rostering':       generate_rostering_messages,
+    'stc':             generate_stc_messages,
+    'cc':              generate_cc_messages,
+    'pod':             generate_pod_messages,
+    'noa':             generate_noa_messages,
+    'bags':            generate_bags_messages,
+    'carrier_inv':     generate_carrier_inv_messages,
+    'vsa':             generate_vsa_messages,
+    'nursery_overuse': generate_nursery_overuse_messages,
 }
 
 
