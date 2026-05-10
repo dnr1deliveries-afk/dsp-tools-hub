@@ -1372,36 +1372,31 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     # Get current date for header
     today = datetime.now()
     week_num = today.isocalendar()[1]
-    # Build the bridge message
     lines = []
-    lines.append(f':bar_chart: {station} TRACER BRIDGE — Week {week_num} | {today.strftime("%d/%m/%Y")}')
-    lines.append(DIVIDER)
+    lines.append(f'{station} TRACER BRIDGE — Week {week_num} | {today.strftime("%d/%m/%Y")}')
     lines.append('')
-    lines.append(':clipboard: SUMMARY')
+    lines.append('SUMMARY')
     lines.append(f'Total Shipments: {total}')
-    lines.append(f'  • Returned to Station: {total_returned} shipments')
-    lines.append(f'  • Customer Rejected: {total_rejected} shipments')
-    lines.append(f'  • Still Outstanding: {total_outstanding} shipments (£{total_value:,.2f})')
+    lines.append(f'  Returned to Station: {total_returned} shipments')
+    lines.append(f'  Customer Rejected: {total_rejected} shipments')
+    lines.append(f'  Still Outstanding: {total_outstanding} shipments (£{total_value:,.2f})')
     lines.append('')
     
     # Outstanding by DSP
     if outstanding_packages:
-        lines.append(f':red_circle: NOT RECOVERED BY DSP ({total_outstanding} shipments)')
-        lines.append(DIVIDER)
+        lines.append(f'NOT RECOVERED BY DSP ({total_outstanding} shipments)')
         lines.extend(dsp_lines)
-        lines.append('')
         lines.append('')
     
     # Reason breakdown
     if reason_totals:
-        lines.append(':mag: REASON BREAKDOWN')
+        lines.append('REASON BREAKDOWN')
         lines.append(reason_summary)
         lines.append('')
     
     # Returned packages
     if returned_packages:
-        lines.append(f':large_green_circle: RETURNED TO STATION ({total_returned} shipments)')
-        lines.append(DIVIDER)
+        lines.append(f'RETURNED TO STATION ({total_returned} shipments)')
         for dsp in sorted(dsp_returned.keys()):
             pkgs = dsp_returned[dsp]
             for p in pkgs:
@@ -1410,8 +1405,7 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
     
     # Rejected packages
     if rejected_packages:
-        lines.append(f':large_yellow_circle: CUSTOMER REJECTED ({total_rejected} shipments)')
-        lines.append(DIVIDER)
+        lines.append(f'CUSTOMER REJECTED ({total_rejected} shipments)')
         rejected_str = ' | '.join(
             f'{dsp}: {count}'
             for dsp, count in sorted(dsp_rejected.items(), key=lambda x: -x[1])
@@ -1419,6 +1413,6 @@ def generate_tracer_bridge_messages(not_recovered_bytes: bytes, search_bytes: by
         lines.append(rejected_str)
     
     content = '\n'.join(lines)
-    messages = {station or 'STATION': wrap_message(content)}
+    messages = {station or 'STATION': content}
     
     return messages
