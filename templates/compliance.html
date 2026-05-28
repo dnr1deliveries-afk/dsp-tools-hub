@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Compliance Information — DSP Tools Hub{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            
+            <!-- Header -->
+            <div class="text-center mb-5">
+                <h1 class="display-5 fw-bold">
+                    <i class="bi bi-shield-check text-success"></i>
+                    Framework Compliance
+                </h1>
+                <p class="lead text-muted">
+                    DSP Tools Hub v2.0 — Compliant with On-Road DSP Collaboration SOP (Week 21)
+                </p>
+            </div>
+            
+            <!-- Key Changes Alert -->
+            <div class="alert alert-success mb-4">
+                <h5 class="alert-heading"><i class="bi bi-check-circle-fill"></i> What Changed in v2.0</h5>
+                <p class="mb-0">
+                    All tools now output <strong>DSP-level summary data only</strong>. 
+                    Route-level detail, DA/driver identifiers, and action requests have been removed 
+                    to comply with the On-Road DSP Collaboration SOP.
+                </p>
+            </div>
+            
+            <!-- Three Principles -->
+            <div class="row g-4 mb-5">
+                <div class="col-md-4">
+                    <div class="card h-100 border-primary">
+                        <div class="card-body text-center">
+                            <div class="display-4 text-primary mb-3">
+                                <i class="bi bi-bar-chart"></i>
+                            </div>
+                            <h5 class="card-title">DSP-Level Data Only</h5>
+                            <p class="card-text text-muted">
+                                All metrics are aggregated to DSP totals. 
+                                No route-level breakdown, no DA/TRID identifiers.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 border-success">
+                        <div class="card-body text-center">
+                            <div class="display-4 text-success mb-3">
+                                <i class="bi bi-info-circle"></i>
+                            </div>
+                            <h5 class="card-title">Informational Only</h5>
+                            <p class="card-text text-muted">
+                                Messages provide awareness data only. 
+                                No action requests, no "please do X" language.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 border-warning">
+                        <div class="card-body text-center">
+                            <div class="display-4 text-warning mb-3">
+                                <i class="bi bi-hand-thumbs-up"></i>
+                            </div>
+                            <h5 class="card-title">Support-Driven</h5>
+                            <p class="card-text text-muted">
+                                Data shared for DSP awareness and self-service. 
+                                DSPs access detailed data via their own tools.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tool Status Table -->
+            <div class="card mb-5">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Tool Compliance Status</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tool</th>
+                                <th>Status</th>
+                                <th>v2.0 Output</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><i class="bi bi-search"></i> DSP Chase</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Your DSP has X outstanding scrub errors"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-mailbox"></i> DSP Pickups</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Your DSP has X packages awaiting pickup"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-clipboard-check"></i> Rostering</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Overall Compliance: X%"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-truck"></i> STC</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Fleet Compliance: X%"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-telephone-fill"></i> Contact Compliance</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Total Exceptions: X, Call Attempts: Y%"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-camera-fill"></i> POD</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"POD Opportunities: X"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-bell-fill"></i> NOA</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Total NOA Events: X"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-bag-fill"></i> Unreturned Bags</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Total Unreturned Bags: X"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-clipboard-data"></i> Carrier Investigations</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Open Investigations: X"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-shield-check"></i> VSA</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Vehicles Pending Inspection: X"</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-clipboard2-pulse"></i> Tracer Bridge</td>
+                                <td><span class="badge bg-success">✅ Compliant</span></td>
+                                <td>"Not Recovered: X packages"</td>
+                            </tr>
+                            <tr class="table-danger">
+                                <td><i class="bi bi-person-fill-exclamation"></i> Nursery Overuse</td>
+                                <td><span class="badge bg-danger">❌ Removed</span></td>
+                                <td>No compliant path — directs DA deployment</td>
+                            </tr>
+                            <tr class="table-danger">
+                                <td><i class="bi bi-people-fill"></i> Ridealong Overuse</td>
+                                <td><span class="badge bg-danger">❌ Removed</span></td>
+                                <td>No compliant path — directs DA staffing</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- What Was Removed -->
+            <div class="card mb-5 border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-x-circle"></i> What Was Removed</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-danger">❌ Route-Level Data</h6>
+                            <ul class="text-muted">
+                                <li>Individual route IDs</li>
+                                <li>Per-route package counts</li>
+                                <li>Route-level bag grouping</li>
+                                <li>Route lookup features</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-danger">❌ DA/Driver-Level Data</h6>
+                            <ul class="text-muted">
+                                <li>Transporter IDs (even anonymised)</li>
+                                <li>DA performance by individual</li>
+                                <li>VINs and VRNs</li>
+                                <li>DA deployment patterns</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-danger">❌ Action Requests</h6>
+                            <ul class="text-muted">
+                                <li>"Please chase"</li>
+                                <li>"Provide root cause"</li>
+                                <li>"Please provide insight"</li>
+                                <li>"Confirm when completed"</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-danger">❌ Directive Language</h6>
+                            <ul class="text-muted">
+                                <li>"You must..."</li>
+                                <li>"You need to..."</li>
+                                <li>"Action required"</li>
+                                <li>Route/DA-level flags</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Framework Reference -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-book"></i> Framework Reference</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        This tool complies with the <strong>On-Road DSP Collaboration SOP (Week 21)</strong>, 
+                        which establishes:
+                    </p>
+                    <ul>
+                        <li><strong>Four authorised meeting types:</strong> DDM, DORM, DPR, DSP Roundtables</li>
+                        <li><strong>DSP autonomy:</strong> DSPs are independent business owners who manage their own operations</li>
+                        <li><strong>Support-driven model:</strong> OPS provides resources when DSPs request them</li>
+                        <li><strong>DSP-level data only:</strong> No route-level or DA-level data sharing</li>
+                    </ul>
+                    <p class="text-muted mb-0">
+                        <small>
+                            <i class="bi bi-info-circle"></i>
+                            For detailed framework information, refer to the On-Road DSP Collaboration SOP 
+                            and Principles of Engagement (POE) guidelines.
+                        </small>
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Back Button -->
+            <div class="text-center">
+                <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            
+        </div>
+    </div>
+</div>
+{% endblock %}

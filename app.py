@@ -1,14 +1,21 @@
 """
-DSP Tools Hub — Web Application v1.8
-Flask web interface for the DSP Tools Hub.
-Multi-station support with per-station webhook configuration.
+DSP Tools Hub — Web Application v2.0 (COMPLIANT)
+================================================
+Compliant with On-Road DSP Collaboration SOP (Week 21)
+
+COMPLIANCE PRINCIPLES:
+1. DSP-level data ONLY — no route-level, no DA/TRID-level
+2. Informational language ONLY — no action requests
+3. Support-driven — data shared for DSP awareness, not OPS direction
+
 Deploy: Docker → Render.com
 Repo:   dnr1deliveries-afk/dsp-tools-hub
 
-v1.6 - Chase tool: optional bulk history upload for mistaken return detection
-       Returned packages shown on web UI only (excluded from Slack messages)
-v1.8 - Chase tool: Route Code lookup from Tracer file (with Bulk History fallback)
-       Packages now display with their assigned Route Code in messages
+v2.0 - Framework-compliant rebuild (Week 21)
+       - All tools output DSP-level totals only
+       - Removed Nursery Overuse and Ridealong Overuse (no compliant path)
+       - Removed action request language from all messages
+       - Added compliance footer to all messages
 """
 
 import os
@@ -32,9 +39,9 @@ from processing.dsp_core import (
     generate_bags_messages,
     generate_carrier_inv_messages,
     generate_vsa_messages,
-    generate_nursery_overuse_messages,
-    generate_ridealong_overuse_messages,
     generate_tracer_bridge_messages,
+    # Removed: generate_nursery_overuse_messages (no compliant path)
+    # Removed: generate_ridealong_overuse_messages (no compliant path)
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -55,135 +62,123 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dsp-hub-dev-key-change-in-prod')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024   # 50 MB
 
-VERSION    = '1.8'
-BUILD_DATE = '2026-05-08'
+VERSION    = '2.0'
+BUILD_DATE = '2026-05-28'
 
-# ── Tool registry — single source of truth for all 10 tools ───────────────────
+# ── Tool registry — COMPLIANT v2.0 ────────────────────────────────────────────
+# All tools now output DSP-level totals only (no route/DA-level data)
+# Nursery Overuse and Ridealong Overuse have been REMOVED (no compliant path)
+
 TOOLS = {
     'chase': {
         'name':      'DSP Chase',
         'icon':      'bi-search',
         'emoji':     '🔍',
-        'desc':      'Outstanding scrub error shipments per DSP',
+        'desc':      'Outstanding scrub error count per DSP (DSP totals only)',
         'files':     [{'id': 'csv_file', 'label': 'Scrub Error CSV',
                        'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True},
                       {'id': 'history_file', 'label': 'Bulk History Export (optional)',
                        'hint': 'bulk_history_export*.csv — detects mistaken returns', 'required': False},
                       {'id': 'tracer_file', 'label': 'Tracer File (optional)',
-                       'hint': 'NDNR Day-1 Raw Data*.csv — adds Route Codes', 'required': False}],
+                       'hint': 'NDNR Day-1 Raw Data*.csv — improves return detection', 'required': False}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no route/package detail',
     },
     'pickups': {
         'name':      'DSP Pickups',
         'icon':      'bi-mailbox',
         'emoji':     '📬',
-        'desc':      'Awaiting pickup messages with optional route lookup',
+        'desc':      'Awaiting pickup count per DSP (DSP totals only)',
         'files':     [{'id': 'csv_file',    'label': 'Awaiting Pickup CSV',
-                       'hint': 'AWAITING PICK UP*.csv',   'required': True},
-                      {'id': 'search_file', 'label': 'SearchResults CSV (optional)',
-                       'hint': 'SearchResults*.csv — adds Route Codes', 'required': False}],
+                       'hint': 'AWAITING PICK UP*.csv',   'required': True}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no route lookup',
     },
     'rostering': {
         'name':      'Rostering',
         'icon':      'bi-clipboard-check',
         'emoji':     '📋',
-        'desc':      'Daily rostering compliance per DSP and service type',
+        'desc':      'Rostering compliance percentage per DSP',
         'files':     [{'id': 'csv_file', 'label': 'Rostering Capacity CSV',
                        'hint': 'Rostering_Capacity_C_*.csv', 'required': True}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows compliance % only, no slot-level detail',
     },
     'stc': {
         'name':      'STC',
         'icon':      'bi-truck',
         'emoji':     '🚚',
-        'desc':      'Service Type Compliance — D-1 vs D-0 vehicle swaps',
+        'desc':      'Fleet service type compliance percentage per DSP',
         'files':     [{'id': 'csv_file', 'label': 'STC Deep Dive CSV',
                        'hint': 'Dive Deep Data Service Type Compliance*.csv', 'required': True}],
-        'safe_affected': True,
-        'safe_note':  'Safe Mode: VINs replaced with anonymised DA-XXXX tokens',
+        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows fleet % only, no VIN/route detail',
     },
     'cc': {
         'name':      'Contact Compliance',
         'icon':      'bi-telephone-fill',
         'emoji':     '📞',
-        'desc':      'Failed deliveries with contact data (excludes NOA rows)',
+        'desc':      'Contact compliance summary per DSP (DSP totals only)',
         'files':     [{'id': 'csv_file', 'label': 'CC Exceptions CSV',
                        'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
-        'safe_affected': True,
-        'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
+        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no DA/delivery detail',
     },
     'pod': {
         'name':      'POD',
         'icon':      'bi-camera-fill',
         'emoji':     '📷',
-        'desc':      'Picture on Delivery opportunities (excludes manual bypasses)',
+        'desc':      'POD opportunity count per DSP (DSP totals only)',
         'files':     [{'id': 'csv_file', 'label': 'POD Summary CSV',
                        'hint': 'POD_Summary_*.csv', 'required': True}],
-        'safe_affected': True,
-        'safe_note':  'Safe Mode: DA IDs replaced with anonymised DA-XXXX tokens',
+        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no DA detail',
     },
     'noa': {
         'name':      'NOA',
         'icon':      'bi-bell-fill',
         'emoji':     '🔔',
-        'desc':      'Notification of Arrival — packages requiring customer notification follow-up',
+        'desc':      'Notification of Arrival event count per DSP',
         'files':     [{'id': 'csv_file', 'label': 'Exceptions CSV',
                        'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
-        'safe_affected': True,
-        'safe_note':  'Safe Mode: Transporter IDs replaced with anonymised DA-XXXX tokens',
+        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows event count only, no action requests',
     },
     'bags': {
         'name':      'Unreturned Bags',
         'icon':      'bi-bag-fill',
         'emoji':     '👜',
-        'desc':      'Unreturned bags per DSP — grouped by date and route, flags routes with 3+ bags',
+        'desc':      'Unreturned bag count per DSP (DSP totals only)',
         'files':     [{'id': 'csv_file', 'label': 'Unreturned Bags CSV',
                        'hint': 'List_of_not_returned_*.csv', 'required': True}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no route detail',
     },
     'carrier_inv': {
         'name':      'Carrier Investigations',
         'icon':      'bi-clipboard-data',
         'emoji':     '🕵️',
-        'desc':      'DNR (Delivered Not Received) carrier investigations per DSP — week to date',
+        'desc':      'DNR investigation count per DSP — week to date',
         'files':     [{'id': 'csv_file', 'label': 'Carrier Investigations CSV',
                        'hint': 'Carrier_Investigatio_*.csv', 'required': True}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows investigation count only, no package detail',
     },
     'vsa': {
         'name':      'VSA',
         'icon':      'bi-shield-check',
         'emoji':     '🛡️',
-        'desc':      'Vehicle Safety Audit — bi-weekly cycle, vehicles pending inspection (inspection_passed = N)',
+        'desc':      'Vehicles pending inspection count per DSP',
         'files':     [{'id': 'csv_file', 'label': 'VSA Deep Dive CSV',
                        'hint': 'Dive Deep Data Total Expected VSA Audits (Cycle)*.csv', 'required': True}],
-        'safe_affected': True,
-        'safe_note':  'Safe Mode: VINs replaced with anonymised VIN-XXXX tokens',
-    },
-    'nursery_overuse': {
-        'name':      'Nursery Overuse',
-        'icon':      'bi-person-fill-exclamation',
-        'emoji':     '🌱',
-        'desc':      'Nursery Route Overuse — Standard DAs assigned to Nursery-level routes',
-        'files':     [{'id': 'csv_file', 'label': 'Nursery Overuse CSV',
-                       'hint': 'Overused_Nursery_Rou_*.csv', 'required': True}],
         'safe_affected': False,
-    },
-    'ridealong_overuse': {
-        'name':      'Ridealong Overuse',
-        'icon':      'bi-people-fill',
-        'emoji':     '👥',
-        'desc':      'Ridealong Route Overuse — Routes flagged for DA count or tenured DA issues',
-        'files':     [{'id': 'csv_file', 'label': 'Ridealong Overuse CSV',
-                       'hint': 'Raw_DataOnly_showing_*.csv', 'required': True}],
-        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows vehicle count only, no VIN/VRN detail',
     },
     'tracer_bridge': {
         'name':      'Tracer Bridge',
         'icon':      'bi-clipboard2-pulse',
         'emoji':     '📊',
-        'desc':      'Not Recovered packages — DSP breakdown with return detection',
+        'desc':      'Not recovered package count per DSP (DSP totals only)',
         'files':     [{'id': 'not_recovered_file', 'label': 'Not Recovered Deep Dive CSV',
                        'hint': 'Not_Recovered_Deep_D_*.csv', 'required': True},
                       {'id': 'search_file', 'label': 'SearchResults CSV',
@@ -191,7 +186,14 @@ TOOLS = {
                       {'id': 'bulk_history_file', 'label': 'Bulk History Export (optional)',
                        'hint': 'bulk_history_export*.csv — detects returned packages', 'required': False}],
         'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no tracking IDs',
     },
+    # ──────────────────────────────────────────────────────────────────────────
+    # REMOVED TOOLS (No compliant path under Week 21 framework)
+    # ──────────────────────────────────────────────────────────────────────────
+    # 'nursery_overuse' — REMOVED: Directs DSP DA deployment decisions
+    # 'ridealong_overuse' — REMOVED: Directs DSP staffing decisions
+    # ──────────────────────────────────────────────────────────────────────────
 }
 
 # Map tool_id → generate function
@@ -206,9 +208,8 @@ GENERATORS = {
     'bags':               generate_bags_messages,
     'carrier_inv':        generate_carrier_inv_messages,
     'vsa':                generate_vsa_messages,
-    'nursery_overuse':    generate_nursery_overuse_messages,
-    'ridealong_overuse':  generate_ridealong_overuse_messages,
     'tracer_bridge':      generate_tracer_bridge_messages,
+    # Removed: nursery_overuse, ridealong_overuse
 }
 
 
@@ -226,7 +227,7 @@ def inject_globals():
 
 # ── Session helpers ───────────────────────────────────────────────────────────
 _msg_store = defaultdict(dict)
-_returned_store = defaultdict(dict)  # v1.6: store returned packages separately
+_returned_store = defaultdict(dict)
 
 
 def get_station() -> str:
@@ -248,14 +249,14 @@ def get_stored_messages(tool_id: str) -> dict:
 
 
 def store_returned(tool_id: str, returned: dict):
-    """v1.6: Store returned packages for web display."""
+    """Store returned package counts for web display."""
     sid = session.get('sid')
     if sid:
         _returned_store[sid][tool_id] = returned
 
 
 def get_stored_returned(tool_id: str) -> dict:
-    """v1.6: Get returned packages for web display."""
+    """Get returned package counts for web display."""
     sid = session.get('sid')
     if sid and sid in _returned_store:
         return _returned_store[sid].get(tool_id, {})
@@ -293,9 +294,14 @@ def set_station():
     return redirect(next_page)
 
 
-# ── Safe Mode toggle (AJAX) ───────────────────────────────────────────────────
+# ── Safe Mode toggle (AJAX) — Note: Safe Mode no longer needed in v2.0 ────────
 @app.route('/set-safe-mode', methods=['POST'])
 def set_safe_mode():
+    """Safe Mode toggle preserved for backwards compatibility.
+    
+    Note: In v2.0, Safe Mode is no longer necessary as all tools
+    output DSP-level totals only (no DA/route identifiable data).
+    """
     body = request.get_json(silent=True) or {}
     session['safe_mode'] = bool(body.get('safe_mode', False))
     return jsonify({'ok': True, 'safe_mode': session['safe_mode']})
@@ -317,7 +323,7 @@ def tool(tool_id):
 
     tool_meta = TOOLS[tool_id]
     messages  = {}
-    returned_packages = {}  # v1.6: for chase tool
+    returned_packages = {}
     error     = None
 
     if request.method == 'POST':
@@ -326,8 +332,8 @@ def tool(tool_id):
         try:
             csv_file     = request.files.get('csv_file')
             search_file  = request.files.get('search_file')
-            history_file = request.files.get('history_file')  # v1.6: optional bulk history
-            tracer_file  = request.files.get('tracer_file')   # v1.8: optional tracer for route codes
+            history_file = request.files.get('history_file')
+            tracer_file  = request.files.get('tracer_file')
 
             # Skip generic csv_file validation for tools with custom file handling
             if tool_id not in ('tracer_bridge',):
@@ -343,8 +349,7 @@ def tool(tool_id):
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
             elif tool_id == 'chase':
-                # v1.8: Chase returns (messages, returned_by_dsp) tuple
-                # Now accepts optional tracer_bytes for route code lookup
+                # Chase returns (messages, returned_counts) tuple
                 messages, returned_packages = gen(
                     file_bytes,
                     history_bytes=history_bytes,
@@ -353,11 +358,8 @@ def tool(tool_id):
                 )
                 store_returned(tool_id, returned_packages)
                 if returned_packages:
-                    total_returned = sum(len(v) for v in returned_packages.values())
-                    flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from Slack).', 'info')
-                # v1.8: Notify if route codes were added
-                if tracer_bytes or history_bytes:
-                    flash('🗺️ Route codes added to packages (where available).', 'info')
+                    total_returned = sum(v for v in returned_packages.values())
+                    flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from totals).', 'info')
             elif tool_id == 'tracer_bridge':
                 # Tracer Bridge: Not Recovered + SearchResults + optional Bulk History
                 not_recovered_file = request.files.get('not_recovered_file')
@@ -388,10 +390,9 @@ def tool(tool_id):
             if not messages:
                 flash('No messages generated — check the input file has data for known DSPs.', 'warning')
             else:
-                flash(f'✅ Generated {len(messages)} DSP message(s).', 'success')
+                flash(f'✅ Generated {len(messages)} DSP summary message(s).', 'success')
 
             store_messages(tool_id, messages)
-
 
         except ValueError as e:
             error = str(e)
@@ -418,7 +419,7 @@ def tool(tool_id):
         first_message=first_message,
         webhooks=webhooks,
         error=error,
-        returned_packages=returned_packages,  # v1.6: pass to template
+        returned_packages=returned_packages,
     )
 
 
@@ -552,11 +553,19 @@ def setup():
     return render_template('setup.html', webhooks=webhooks, settings=settings)
 
 
+# ── Compliance info page ──────────────────────────────────────────────────────
+
+@app.route('/compliance')
+def compliance():
+    """Display compliance information about v2.0 changes."""
+    return render_template('compliance.html')
+
+
 # ── Health check ──────────────────────────────────────────────────────────────
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'healthy', 'version': VERSION}), 200
+    return jsonify({'status': 'healthy', 'version': VERSION, 'compliant': True}), 200
 
 
 # ── Error handlers ────────────────────────────────────────────────────────────
@@ -595,5 +604,5 @@ def log_req(response):
 if __name__ == '__main__':
     port  = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    logger.info(f'DSP Tools Hub v{VERSION} starting on port {port}')
+    logger.info(f'DSP Tools Hub v{VERSION} (COMPLIANT) starting on port {port}')
     app.run(host='0.0.0.0', port=port, debug=debug)
