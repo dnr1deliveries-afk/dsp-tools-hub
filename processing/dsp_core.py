@@ -89,8 +89,8 @@ def wrap_message(content: str) -> str:
 COMPLIANT_FOOTER = (
     '\n\n'
     'ℹ️ This is DSP-level summary data for your awareness.\n'
-    'For detailed breakdown, please use your DSP tools (SUI, Cortex, etc.).\n'
-    '📞 Need support? Contact OPS during DORM windows.'
+    'For detailed breakdown, we advise that you refer to your DSP tools.\n'
+    '📞 Need support? Contact OPS during DDM / DORM windows.'
 )
 
 
