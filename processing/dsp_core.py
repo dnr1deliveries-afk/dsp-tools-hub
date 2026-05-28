@@ -713,14 +713,19 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
     for dsp in sorted(dsp_data.keys()):
         data = dsp_data[dsp]
         inv = data['investigations']
+    messages = {}
+    for dsp in sorted(dsp_data.keys()):
+        data = dsp_data[dsp]
+        inv = data['investigations']
         resp = data['responses']
-        resp_rate = (resp / inv * 100) if inv > 0 else 0
+        prevention_rate = (resp / inv * 100) if inv > 0 else 0
         
         content = (
             f'🕵️ DNR Investigation Summary — {dsp}\n'
             f'Week to Date\n\n'
             f'Open Investigations: {inv}\n'
-            f'DSP Responses: {resp} ({resp_rate:.0f}% response rate)'
+            f'DSP Responses: {resp}\n'
+            f'% Prevention (Response): {prevention_rate:.0f}%'
             f'{COMPLIANT_FOOTER}'
         )
         messages[dsp] = wrap_message(content)
@@ -939,3 +944,4 @@ def generate_ridealong_overuse_messages(file_bytes: bytes, safe_mode: bool = Fal
         "DSPs are independent business owners who manage their own employees.\n"
         "OPS cannot flag or direct how DSPs staff their routes."
     )
+
