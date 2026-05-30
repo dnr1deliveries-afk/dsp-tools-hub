@@ -5,7 +5,7 @@
   },
   "BALG": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "BLEL": {
     "metrics": "https://hooks.slack.com/triggers/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",
@@ -25,11 +25,11 @@
   },
   "MMLN": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "RPTD": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "SBL": {
     "metrics": "https://hooks.slack.com/triggers/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",
