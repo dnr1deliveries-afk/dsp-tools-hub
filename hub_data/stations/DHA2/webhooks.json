@@ -13,7 +13,7 @@
   },
   "BTTE": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
+    "ops": ""
   },
   "CLBT": {
     "metrics": "https://hooks.slack.com/triggers/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",
@@ -33,7 +33,7 @@
   },
   "SBL": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "TLOL": {
     "metrics": "https://hooks.slack.com/triggers/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",
