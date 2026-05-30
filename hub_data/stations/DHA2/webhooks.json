@@ -1,7 +1,7 @@
 {
   "ATZC": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://slack.com/shortcuts/Ft0AQAQZ1L8P/3636d565e966e23e6c4f670deeeaeb8c"
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "BALG": {
     "metrics": "https://hooks.slack.com/triggers/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",
@@ -31,12 +31,12 @@
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
   },
-  "TLOL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
-  },
   "SBL": {
     "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
+  },
+  "TLOL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
   }
 }
