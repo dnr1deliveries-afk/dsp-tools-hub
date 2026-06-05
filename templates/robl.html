@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}ROBL Offsets{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex align-items-center mb-4">
+        <i class="bi bi-graph-up-arrow fs-2 me-3 text-primary"></i>
+        <div>
+            <h1 class="mb-0">ROBL PvA Offset Analysis</h1>
+            <p class="text-muted mb-0">🔒 Internal use only — not shared with DSPs</p>
+        </div>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" class="mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="csv_file" class="form-label">ROBL PvA Export</label>
+                    <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv" required>
+                    <div class="form-text">[EU]_ROBL_PvA_Offset_*.csv</div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-play-fill"></i> Analyse
+                </button>
+            </div>
+        </div>
+    </form>
+
+    {% if results %}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h2 class="display-4 text-warning">{{ results.summary.active_count }}</h2>
+                    <p class="mb-0">DSPs with Offsets</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-danger">
+                <div class="card-body text-center">
+                    <h2 class="display-4 text-danger">{{ results.summary.max_offset }}</h2>
+                    <p class="mb-0">Max Offset (min) — {{ results.summary.max_offset_dsp }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h2 class="display-4 text-success">{{ results.summary.clear_count }}</h2>
+                    <p class="mb-0">DSPs Clear</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-table"></i> Active Offsets — {{ results.summary.latest_date }}</span>
+            <span class="badge bg-secondary">{{ results.summary.date_range }}</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>DSP</th>
+                        <th>Type</th>
+                        <th class="text-end">Offset (min)</th>
+                        <th class="text-end">Final Input</th>
+                        <th class="text-end">Total Reduction</th>
+                        <th>Modified By</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in results.active_offsets %}
+                    <tr class="{% if row.offset >= 20 %}table-danger{% elif row.offset >= 10 %}table-warning{% endif %}">
+                        <td><strong>{{ row.dsp }}</strong></td>
+                        <td><span class="badge {% if row.type == 'LEV' %}bg-info{% else %}bg-secondary{% endif %}">{{ row.type }}</span></td>
+                        <td class="text-end"><strong>{{ row.offset }}</strong></td>
+                        <td class="text-end">{{ row.final_input }}</td>
+                        <td class="text-end">{{ row.total_reduction }}</td>
+                        <td>{{ row.modified_by }}</td>
+                        <td>{{ row.reason }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if results.changes %}
+    <div class="card mb-4">
+        <div class="card-header"><i class="bi bi-arrow-left-right"></i> Week-on-Week Changes</div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>DSP</th>
+                        <th>Type</th>
+                        <th class="text-end">Start</th>
+                        <th class="text-end">End</th>
+                        <th class="text-end">Change</th>
+                        <th class="text-center">Trend</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for c in results.changes %}
+                    <tr>
+                        <td><strong>{{ c.dsp }}</strong></td>
+                        <td><span class="badge {% if c.type == 'LEV' %}bg-info{% else %}bg-secondary{% endif %}">{{ c.type }}</span></td>
+                        <td class="text-end">{{ c.start }}</td>
+                        <td class="text-end">{{ c.end }}</td>
+                        <td class="text-end {% if c.change > 0 %}text-danger{% elif c.change < 0 %}text-success{% endif %}">
+                            {% if c.change > 0 %}+{% endif %}{{ c.change }}
+                        </td>
+                        <td class="text-center">
+                            {% if c.change > 0 %}⬆️{% elif c.change < 0 %}⬇️{% else %}➡️{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-primary" onclick="copyToClipboard()">
+            <i class="bi bi-clipboard"></i> Copy Summary
+        </button>
+    </div>
+
+    <textarea id="clipboard-text" class="d-none">{{ clipboard_text }}</textarea>
+    <script>
+    function copyToClipboard() {
+        const text = document.getElementById('clipboard-text').value;
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Summary copied to clipboard!');
+        });
+    }
+    </script>
+    {% endif %}
+</div>
+{% endblock %}

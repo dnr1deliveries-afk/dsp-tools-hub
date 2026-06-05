@@ -49,6 +49,9 @@ from storage.station_store import (
     get_webhooks_for_channel, get_payload_key,
     list_stations,
 )
+from processing.robl_processor import(
+    generate_robl_analysis, format_robl_clipboard
+)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -188,6 +191,18 @@ TOOLS = {
         'safe_affected': False,
         'compliant_note': '✅ Compliant: Shows DSP-level totals only, no tracking IDs',
     },
+    'robl': {
+        'name':      'ROBL Offsets',
+        'icon':      'bi-graph-up-arrow',
+        'emoji':     '📊',
+        'desc':      'PvA offset analysis — internal use only',
+        'files':     [{'id': 'csv_file', 'label': 'ROBL PvA Export',
+                       'hint': '[EU]_ROBL_PvA_Offset_*.csv', 'required': True}],
+        'safe_affected': False,
+        'compliant_note': '🔒 Internal: Station management tool, not shared with DSPs',
+        'internal_only': True,
+    },
+
     # ──────────────────────────────────────────────────────────────────────────
     # REMOVED TOOLS (No compliant path under Week 21 framework)
     # ──────────────────────────────────────────────────────────────────────────
@@ -275,6 +290,27 @@ def ensure_session():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/robl', methods=['GET', 'POST'])
+def robl():
+    """ROBL Offset Analysis — internal use only."""
+    results = None
+    clipboard_text = ''
+    
+    if request.method == 'POST':
+        csv_file = request.files.get('csv_file')
+        if csv_file and csv_file.filename:
+            csv_content = csv_file.read().decode('utf-8-sig')
+            results = generate_robl_analysis(csv_content)
+            clipboard_text = format_robl_clipboard(results)
+            if 'error' in results:
+                flash(results['error'], 'danger')
+            else:
+                flash(f"ROBL Analysis: {results['summary']['active_count']} DSPs with offsets, max {results['summary']['max_offset']} min", 'success')
+        else:
+            flash('Please upload a ROBL CSV file', 'danger')
+    
+    return render_template('robl.html', results=results, clipboard_text=clipboard_text)
 
 
 # ── Station selection ─────────────────────────────────────────────────────────
