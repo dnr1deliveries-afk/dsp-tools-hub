@@ -77,15 +77,12 @@ TOOLS = {
         'name':      'DSP Chase',
         'icon':      'bi-search',
         'emoji':     '🔍',
-        'desc':      'Outstanding scrub error count per DSP (DSP totals only)',
-        'files':     [{'id': 'csv_file', 'label': 'Scrub Error CSV',
+        'desc':      'Outstanding scrub error shipments per DSP with route codes',
+        'files':     [{'id': 'csv_file',    'label': 'Scrub Error CSV',
                        'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True},
-                      {'id': 'history_file', 'label': 'Bulk History Export (optional)',
-                       'hint': 'bulk_history_export*.csv — detects mistaken returns', 'required': False},
-                      {'id': 'tracer_file', 'label': 'Tracer File (optional)',
-                       'hint': 'NDNR Day-1 Raw Data*.csv — improves return detection', 'required': False}],
+                      {'id': 'search_file', 'label': 'SearchResults CSV',
+                       'hint': 'SearchResults*.csv — Route Code lookup', 'required': True}],
         'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no route/package detail',
     },
     'pickups': {
         'name':      'DSP Pickups',
@@ -385,17 +382,7 @@ def tool(tool_id):
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
             elif tool_id == 'chase':
-                # Chase returns (messages, returned_counts) tuple
-                messages, returned_packages = gen(
-                    file_bytes,
-                    history_bytes=history_bytes,
-                    tracer_bytes=tracer_bytes,
-                    safe_mode=safe_mode
-                )
-                store_returned(tool_id, returned_packages)
-                if returned_packages:
-                    total_returned = sum(v for v in returned_packages.values())
-                    flash(f'🔄 {total_returned} package(s) detected as already returned (excluded from totals).', 'info')
+                messages, _ = gen(file_bytes, search_bytes=search_bytes, safe_mode=safe_mode)
             elif tool_id == 'tracer_bridge':
                 # Tracer Bridge: Not Recovered + SearchResults + optional Bulk History
                 not_recovered_file = request.files.get('not_recovered_file')

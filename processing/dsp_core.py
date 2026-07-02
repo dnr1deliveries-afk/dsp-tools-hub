@@ -95,79 +95,88 @@ COMPLIANT_FOOTER = (
 
 
 # ============================================================================
-# DSP CHASE — COMPLIANT v2.0
+# DSP CHASE
 # ============================================================================
 
-def generate_chase_messages(file_bytes: bytes, history_bytes: bytes = None,
-                            tracer_bytes: bytes = None,
+def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
                             safe_mode: bool = False) -> tuple:
     """
-    COMPLIANT v2.0: DSP-level totals only.
-    
-    Output: "Your DSP has X outstanding scrub errors"
-    
-    NO route-level breakdown, NO tracking IDs, NO action requests.
+    DSP Chase — route number + shipment ID output.
+
+    Inputs:
+        file_bytes   : OUTSTANDING SCRUB ERROR*.csv
+        search_bytes : SearchResults*.csv  (Tracking ID -> Route Code lookup)
+
+    Returns: (messages_dict, {})
+        - messages_dict: {dsp: message_text}
+        - empty dict (second value kept for backwards-compatible call signature)
     """
-    # Parse for mistaken returns (still used internally for accurate count)
-    history = {}
-    if history_bytes:
-        for row in _open_csv(history_bytes):
-            tid = row.get('Tracking ID', '').strip()
-            reason = row.get('Reason', '').strip()
-            if tid and reason == 'WRONG_CYCLE_INDUCT':
-                history[tid] = True
-    
-    # Count by DSP (exclude returned)
-    dsp_counts = defaultdict(lambda: {'total': 0, 'returned': 0, 'reasons': defaultdict(int)})
-    
+    # Build route code lookup from SearchResults
+    route_lookup = {}
+    if search_bytes:
+        for row in _open_csv(search_bytes):
+            tid   = row.get('Tracking ID', '').strip()
+            route = row.get('Route Code', '').strip()
+            if tid and route:
+                route_lookup[tid] = route
+
+    # Group by DSP -> Reason Code -> list of {tid, route}
+    dsp_data = defaultdict(lambda: {'by_reason': defaultdict(list)})
+
     for row in _open_csv(file_bytes):
-        dsp = row.get('DSP Name', '').strip()
-        tid = row.get('trackingId', '').strip()
+        dsp    = row.get('DSP Name', '').strip()
+        tid    = row.get('trackingId', '').strip()
         reason = row.get('Attempt Reason Code', '').strip() or 'UNKNOWN'
-        
+
         if not (dsp and tid):
             continue
-        
-        if tid in history:
-            dsp_counts[dsp]['returned'] += 1
-        else:
-            dsp_counts[dsp]['total'] += 1
-            dsp_counts[dsp]['reasons'][reason] += 1
-    
-    today = datetime.now().strftime('%d/%m/%Y')
+
+        route_code = route_lookup.get(tid, '')
+        dsp_data[dsp]['by_reason'][reason].append({'tid': tid, 'route': route_code})
+
+    today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
-    returned_by_dsp = {}
-    
-    for dsp in sorted(dsp_counts.keys()):
-        data = dsp_counts[dsp]
-        total = data['total']
-        returned = data['returned']
-        
-        if returned > 0:
-            returned_by_dsp[dsp] = returned  # Count only, no TIDs
-        
-        if total == 0:
+
+    for dsp in sorted(dsp_data.keys()):
+
+        def sort_key(item):
+            if item['route']:
+                nums = re.findall(r'\d+', item['route'])
+                return (int(nums[-1]) if nums else 9999, item['tid'])
+            return (9999, item['tid'])
+
+        by_reason = dsp_data[dsp]['by_reason']
+        if not by_reason:
             continue
-        
-        # Build reason summary (counts only, no package detail)
-        reason_lines = []
-        for reason, count in sorted(data['reasons'].items(), key=lambda x: -x[1]):
+
+        sections       = []
+        total_packages = 0
+
+        for reason in sorted(by_reason.keys()):
+            items = sorted(by_reason[reason], key=sort_key)
+            total_packages += len(items)
+
             reason_display = reason.replace('_', ' ').title()
-            reason_lines.append(f'  • {reason_display}: {count}')
-        
-        reason_summary = '\n'.join(reason_lines) if reason_lines else '  • No breakdown available'
-        
+            lines = [f'{reason_display} ({len(items)}):']
+            for item in items:
+                route_display = f' [{item["route"]}]' if item['route'] else ''
+                lines.append(f'  {item["tid"]}{route_display}')
+
+            sections.append('\n'.join(lines))
+
         content = (
-            f'📦 Scrub Error Summary — {dsp}\n'
-            f'Date: {today}\n\n'
-            f'Your DSP has {total} outstanding scrub error(s).\n\n'
-            f'Breakdown by reason:\n'
-            f'{reason_summary}'
-            f'{COMPLIANT_FOOTER}'
+            f'Outstanding Shipments \u2014 {dsp}\n'
+            f'Updated: {today}\n'
+            f'Total Packages: {total_packages}\n\n'
+            f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
+            + '\n\n'.join(sections)
+            + '\n\n\n'
+            + DIVIDER
         )
         messages[dsp] = wrap_message(content)
-    
-    return messages, returned_by_dsp
+
+    return messages, {}
+
 
 
 # ============================================================================
