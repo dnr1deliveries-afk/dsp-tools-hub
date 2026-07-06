@@ -120,19 +120,35 @@ def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
             if tid and route:
                 route_lookup[tid] = route
 
-    # Group by DSP -> Reason Code -> list of {tid, route}
+    # Group by DSP -> (Status Code, Reason Code) -> list of {tid, route}
     dsp_data = defaultdict(lambda: {'by_reason': defaultdict(list)})
+
+    # Internal status → display label mapping (used when attempt fields are blank)
+    INTERNAL_LABEL_MAP = {
+        ('MISSING', 'SHIPMENT_RECEIVED'): ('Delivery Failed', 'Damaged'),
+    }
 
     for row in _open_csv(file_bytes):
         dsp    = row.get('DSP Name', '').strip()
         tid    = row.get('trackingId', '').strip()
-        reason = row.get('Attempt Reason Code', '').strip() or 'UNKNOWN'
+        status = row.get('Attempt Status Code', '').strip()
+        reason = row.get('Attempt Reason Code', '').strip()
 
         if not (dsp and tid):
             continue
 
+        if not status and not reason:
+            # Fall back to internal fields for display label
+            int_status = row.get('InternalStatusCode', '').strip()
+            int_reason = row.get('InternalReasonCode', '').strip()
+            status, reason = INTERNAL_LABEL_MAP.get(
+                (int_status, int_reason),
+                (int_status or 'UNKNOWN', int_reason or 'UNKNOWN')
+            )
+        
         route_code = route_lookup.get(tid, '')
-        dsp_data[dsp]['by_reason'][reason].append({'tid': tid, 'route': route_code})
+        group_key  = (status, reason)
+        dsp_data[dsp]['by_reason'][group_key].append({'tid': tid, 'route': route_code})
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
@@ -152,12 +168,15 @@ def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
         sections       = []
         total_packages = 0
 
-        for reason in sorted(by_reason.keys()):
-            items = sorted(by_reason[reason], key=sort_key)
+        for group_key in sorted(by_reason.keys()):
+            items = sorted(by_reason[group_key], key=sort_key)
             total_packages += len(items)
 
-            reason_display = reason.replace('_', ' ').title()
-            lines = [f'{reason_display} ({len(items)}):']
+            status_raw, reason_raw = group_key
+            status_display = status_raw.replace('_', ' ').title()
+            reason_display = reason_raw.replace('_', ' ').title()
+            group_display  = f'{status_display} — {reason_display}'
+            lines = [f'{group_display} ({len(items)}):']
             for item in items:
                 route_display = f' [{item["route"]}]' if item['route'] else ''
                 lines.append(f'  {item["tid"]}{route_display}')
