@@ -101,7 +101,11 @@ COMPLIANT_FOOTER = (
 def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
                             safe_mode: bool = False) -> tuple:
     """
-    DSP Chase — route number + shipment ID output.
+    DSP Chase — legacy two-bucket format.
+
+    Splits outstanding shipments into two groups per DSP:
+        - Driver Marked Missing : Attempt Reason Code == ITEMS_MISSING
+        - To Chase              : everything else
 
     Inputs:
         file_bytes   : OUTSTANDING SCRUB ERROR*.csv
@@ -120,79 +124,59 @@ def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
             if tid and route:
                 route_lookup[tid] = route
 
-    # Group by DSP -> (Status Code, Reason Code) -> list of {tid, route}
-    dsp_data = defaultdict(lambda: {'by_reason': defaultdict(list)})
-
-    # Internal status → display label mapping (used when attempt fields are blank)
-    INTERNAL_LABEL_MAP = {
-        ('MISSING', 'SHIPMENT_RECEIVED'): ('Delivery Failed', 'Damaged'),
-    }
+    # Group by DSP -> bucket ('missing' | 'chase') -> list of {tid, route}
+    dsp_data = defaultdict(lambda: {'chase': [], 'missing': []})
 
     for row in _open_csv(file_bytes):
         dsp    = row.get('DSP Name', '').strip()
         tid    = row.get('trackingId', '').strip()
-        status = row.get('Attempt Status Code', '').strip()
-        reason = row.get('Attempt Reason Code', '').strip()
+        reason = row.get('Attempt Reason Code', '').strip().upper()
 
         if not (dsp and tid):
             continue
 
-        if not status and not reason:
-            # Fall back to internal fields for display label
-            int_status = row.get('InternalStatusCode', '').strip()
-            int_reason = row.get('InternalReasonCode', '').strip()
-            status, reason = INTERNAL_LABEL_MAP.get(
-                (int_status, int_reason),
-                (int_status or 'UNKNOWN', int_reason or 'UNKNOWN')
-            )
-        
         route_code = route_lookup.get(tid, '')
-        group_key  = (status, reason)
-        dsp_data[dsp]['by_reason'][group_key].append({'tid': tid, 'route': route_code})
+        bucket = 'missing' if reason == 'ITEMS_MISSING' else 'chase'
+        dsp_data[dsp][bucket].append({'tid': tid, 'route': route_code})
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
 
+    def sort_key(item):
+        if item['route']:
+            nums = re.findall(r'\d+', item['route'])
+            return (int(nums[-1]) if nums else 9999, item['tid'])
+        return (9999, item['tid'])
+
+    def build_section(title, items):
+        items = sorted(items, key=sort_key)
+        lines = [f'{title} ({len(items)}):']
+        for item in items:
+            route_display = f' ({item["route"]})' if item['route'] else ''
+            lines.append(f'  {item["tid"]}{route_display}')
+        return '\n'.join(lines)
+
     for dsp in sorted(dsp_data.keys()):
+        chase_items   = dsp_data[dsp]['chase']
+        missing_items = dsp_data[dsp]['missing']
 
-        def sort_key(item):
-            if item['route']:
-                nums = re.findall(r'\d+', item['route'])
-                return (int(nums[-1]) if nums else 9999, item['tid'])
-            return (9999, item['tid'])
-
-        by_reason = dsp_data[dsp]['by_reason']
-        if not by_reason:
+        if not chase_items and not missing_items:
             continue
 
-        sections       = []
-        total_packages = 0
-
-        for group_key in sorted(by_reason.keys()):
-            items = sorted(by_reason[group_key], key=sort_key)
-            total_packages += len(items)
-
-            status_raw, reason_raw = group_key
-            status_display = status_raw.replace('_', ' ').title()
-            reason_display = reason_raw.replace('_', ' ').title()
-            group_display  = f'{status_display} — {reason_display}'
-            lines = [f'{group_display} ({len(items)}):']
-            for item in items:
-                route_display = f' [{item["route"]}]' if item['route'] else ''
-                lines.append(f'  {item["tid"]}{route_display}')
-
-            sections.append('\n'.join(lines))
+        sections = []
+        if chase_items:
+            sections.append(build_section('To Chase', chase_items))
+        if missing_items:
+            sections.append(build_section('Driver Marked Missing', missing_items))
 
         content = (
             f'Outstanding Shipments \u2014 {dsp}\n'
-            f'Updated: {today}\n'
-            f'Total Packages: {total_packages}\n\n'
+            f'Updated: {today}\n\n'
             f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
             + '\n\n'.join(sections)
-            + '\n\n\n'
-            + DIVIDER
+            + '\n\nAppreciate your support.'
         )
-        messages[dsp] = wrap_message(content)
+        messages[dsp] = content
 
     return messages, {}
 
