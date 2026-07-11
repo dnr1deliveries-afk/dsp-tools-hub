@@ -22,6 +22,19 @@ def generate_robl_analysis(csv_content: str) -> dict:
     """
     # Parse CSV
     df = pd.read_csv(StringIO(csv_content), encoding='utf-8-sig')
+
+    # Map actual export headers -> internal names used below.
+    # [EU]_ROBL_PvA_Offset_*.csv ships lowercase/snake_case headers that
+    # don't match this module's original column names - rename here so the
+    # rest of the function is untouched.
+    df = df.rename(columns={
+        'ofd_date':            'OFD',
+        'service_type':        'Service Type',
+        'company_code':        'DSP',
+        'modified_by':         'Modified By',
+        'Final Input Minutes': 'final_input_minutes',
+        'Total Reduction':     'total_reduction',
+    })
     
     # Parse dates
     df['OFD'] = pd.to_datetime(df['OFD'])

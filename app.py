@@ -349,6 +349,11 @@ def tool(tool_id):
                                title='Tool Not Found',
                                message=f'No tool named "{tool_id}".'), 404
 
+    # ROBL has a dedicated route (bespoke CSV schema + processor signature,
+    # not present in GENERATORS) - send any generic /tool/robl hits there.
+    if tool_id == 'robl':
+        return redirect(url_for('robl'))
+
     station = get_station()
     if not station:
         flash('⚠️ Please select a station first.', 'warning')
