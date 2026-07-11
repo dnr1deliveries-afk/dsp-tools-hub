@@ -50,7 +50,8 @@ from storage.station_store import (
     list_stations,
 )
 from processing.robl_processor import(
-    generate_robl_analysis, format_robl_clipboard
+    generate_robl_analysis, format_robl_clipboard,
+    format_current_week_clipboard, format_next_week_clipboard, format_changes_clipboard
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -290,24 +291,40 @@ def index():
 
 @app.route('/robl', methods=['GET', 'POST'])
 def robl():
-    """ROBL Offset Analysis — internal use only."""
+    """ROBL Offset Analysis - internal use only."""
     results = None
     clipboard_text = ''
-    
+    clipboard_current = ''
+    clipboard_next = ''
+    clipboard_changes = ''
+
     if request.method == 'POST':
         csv_file = request.files.get('csv_file')
         if csv_file and csv_file.filename:
             csv_content = csv_file.read().decode('utf-8-sig')
             results = generate_robl_analysis(csv_content)
-            clipboard_text = format_robl_clipboard(results)
             if 'error' in results:
                 flash(results['error'], 'danger')
             else:
-                flash(f"ROBL Analysis: {results['summary']['active_count']} DSPs with offsets, max {results['summary']['max_offset']} min", 'success')
+                clipboard_text = format_robl_clipboard(results)
+                clipboard_current = format_current_week_clipboard(results)
+                clipboard_next = format_next_week_clipboard(results)
+                clipboard_changes = format_changes_clipboard(results)
+                s = results['summary']
+                flash(f"ROBL Analysis: Current week {s['current_active_count']} DSPs with offsets "
+                      f"(max {s['max_offset_current']} min) | W+1 {s['next_active_count']} DSPs "
+                      f"(max {s['max_offset_next']} min)", 'success')
         else:
             flash('Please upload a ROBL CSV file', 'danger')
-    
-    return render_template('robl.html', results=results, clipboard_text=clipboard_text)
+
+    return render_template(
+        'robl.html', results=results,
+        clipboard_text=clipboard_text,
+        clipboard_current=clipboard_current,
+        clipboard_next=clipboard_next,
+        clipboard_changes=clipboard_changes,
+    )
+
 
 
 # ── Station selection ─────────────────────────────────────────────────────────

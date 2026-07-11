@@ -17,7 +17,10 @@
                 <div class="mb-3">
                     <label for="csv_file" class="form-label">ROBL PvA Export</label>
                     <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv" required>
-                    <div class="form-text">[EU]_ROBL_PvA_Offset_*.csv</div>
+                    <div class="form-text">
+                        [EU]_ROBL_PvA_Offset_*.csv — export must cover <strong>current week + W+1 (next week)</strong>.
+                        The tool auto-detects both weeks from today's date and compares offsets across them.
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary">
                     <i class="bi bi-play-fill"></i> Analyse
@@ -27,53 +30,68 @@
     </form>
 
     {% if results %}
+    {% set s = results.summary %}
+
+    {% if s.excluded_rows %}
+    <div class="alert alert-warning">
+        ⚠️ {{ s.excluded_rows }} row(s) outside the current week / W+1 window were excluded ({{ s.excluded_range }}).
+    </div>
+    {% endif %}
+
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-warning">
                 <div class="card-body text-center">
-                    <h2 class="display-4 text-warning">{{ results.summary.active_count }}</h2>
-                    <p class="mb-0">DSPs with Offsets</p>
+                    <h2 class="display-6 text-warning">{{ s.current_active_count }}</h2>
+                    <p class="mb-0">Current Week — DSPs w/ Offsets</p>
+                    <small class="text-muted">{{ s.current_week_range }}</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <h2 class="display-6 text-info">{{ s.next_active_count }}</h2>
+                    <p class="mb-0">W+1 — DSPs w/ Offsets</p>
+                    <small class="text-muted">{{ s.next_week_range }}</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
             <div class="card border-danger">
                 <div class="card-body text-center">
-                    <h2 class="display-4 text-danger">{{ results.summary.max_offset }}</h2>
-                    <p class="mb-0">Max Offset (min) — {{ results.summary.max_offset_dsp }}</p>
+                    <h2 class="display-6 text-danger">{{ s.max_offset_next }}</h2>
+                    <p class="mb-0">Max W+1 Offset (min) — {{ s.max_offset_next_dsp }}</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card border-success">
                 <div class="card-body text-center">
-                    <h2 class="display-4 text-success">{{ results.summary.clear_count }}</h2>
-                    <p class="mb-0">DSPs Clear</p>
+                    <h2 class="display-6 text-success">{{ s.clear_count }}</h2>
+                    <p class="mb-0">DSPs Clear (both weeks)</p>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Current Week -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-table"></i> Active Offsets — {{ results.summary.latest_date }}</span>
-            <span class="badge bg-secondary">{{ results.summary.date_range }}</span>
+            <span><i class="bi bi-table"></i> Current Week Active Offsets</span>
+            <span class="badge bg-secondary">{{ s.current_week_range }}</span>
         </div>
         <div class="card-body p-0">
             <table class="table table-striped mb-0">
                 <thead class="table-dark">
                     <tr>
-                        <th>DSP</th>
-                        <th>Type</th>
-                        <th class="text-end">Offset (min)</th>
-                        <th class="text-end">Final Input</th>
-                        <th class="text-end">Total Reduction</th>
-                        <th>Modified By</th>
-                        <th>Reason</th>
+                        <th>DSP</th><th>Type</th><th class="text-end">Offset (min)</th>
+                        <th class="text-end">Final Input</th><th class="text-end">Total Reduction</th>
+                        <th>Modified By</th><th>Reason</th>
                     </tr>
                 </thead>
                 <tbody>
-                {% for row in results.active_offsets %}
+                {% for row in results.current_week %}
                     <tr class="{% if row.offset >= 20 %}table-danger{% elif row.offset >= 10 %}table-warning{% endif %}">
                         <td><strong>{{ row.dsp }}</strong></td>
                         <td><span class="badge {% if row.type == 'LEV' %}bg-info{% else %}bg-secondary{% endif %}">{{ row.type }}</span></td>
@@ -83,25 +101,71 @@
                         <td>{{ row.modified_by }}</td>
                         <td>{{ row.reason }}</td>
                     </tr>
+                {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-3">No active offsets this week</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="card-footer text-end">
+            <button class="btn btn-sm btn-outline-primary" onclick="copyBlock('clip-current')">
+                <i class="bi bi-clipboard"></i> Copy Current Week
+            </button>
+        </div>
     </div>
 
-    {% if results.changes %}
+    <!-- W+1 Preview -->
     <div class="card mb-4">
-        <div class="card-header"><i class="bi bi-arrow-left-right"></i> Week-on-Week Changes</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-calendar-week"></i> W+1 Preview Active Offsets</span>
+            <span class="badge bg-secondary">{{ s.next_week_range }}</span>
+        </div>
         <div class="card-body p-0">
             <table class="table table-striped mb-0">
                 <thead class="table-dark">
                     <tr>
-                        <th>DSP</th>
-                        <th>Type</th>
-                        <th class="text-end">Start</th>
-                        <th class="text-end">End</th>
-                        <th class="text-end">Change</th>
-                        <th class="text-center">Trend</th>
+                        <th>DSP</th><th>Type</th><th class="text-end">Offset (min)</th>
+                        <th class="text-end">Final Input</th><th class="text-end">Total Reduction</th>
+                        <th>Modified By</th><th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in results.next_week %}
+                    <tr class="{% if row.offset >= 20 %}table-danger{% elif row.offset >= 10 %}table-warning{% endif %}">
+                        <td><strong>{{ row.dsp }}</strong></td>
+                        <td><span class="badge {% if row.type == 'LEV' %}bg-info{% else %}bg-secondary{% endif %}">{{ row.type }}</span></td>
+                        <td class="text-end"><strong>{{ row.offset }}</strong></td>
+                        <td class="text-end">{{ row.final_input }}</td>
+                        <td class="text-end">{{ row.total_reduction }}</td>
+                        <td>{{ row.modified_by }}</td>
+                        <td>{{ row.reason }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="7" class="text-center text-muted py-3">No active offsets for W+1 yet</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer text-end">
+            <button class="btn btn-sm btn-outline-primary" onclick="copyBlock('clip-next')">
+                <i class="bi bi-clipboard"></i> Copy W+1 Preview
+            </button>
+        </div>
+    </div>
+
+    <!-- Week-on-Week Changes -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-arrow-left-right"></i> Week-on-Week Changes</span>
+            <span class="badge bg-secondary">{{ s.current_week_range }} → {{ s.next_week_range }}</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>DSP</th><th>Type</th>
+                        <th class="text-end">Current Week</th><th class="text-end">W+1</th>
+                        <th class="text-end">Change</th><th class="text-center">Trend</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -109,8 +173,8 @@
                     <tr>
                         <td><strong>{{ c.dsp }}</strong></td>
                         <td><span class="badge {% if c.type == 'LEV' %}bg-info{% else %}bg-secondary{% endif %}">{{ c.type }}</span></td>
-                        <td class="text-end">{{ c.start }}</td>
-                        <td class="text-end">{{ c.end }}</td>
+                        <td class="text-end">{{ c.current_week }}</td>
+                        <td class="text-end">{{ c.next_week }}</td>
                         <td class="text-end {% if c.change > 0 %}text-danger{% elif c.change < 0 %}text-success{% endif %}">
                             {% if c.change > 0 %}+{% endif %}{{ c.change }}
                         </td>
@@ -118,25 +182,34 @@
                             {% if c.change > 0 %}⬆️{% elif c.change < 0 %}⬇️{% else %}➡️{% endif %}
                         </td>
                     </tr>
+                {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-3">No changes between weeks</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="card-footer text-end">
+            <button class="btn btn-sm btn-outline-primary" onclick="copyBlock('clip-changes')">
+                <i class="bi bi-clipboard"></i> Copy Changes
+            </button>
+        </div>
     </div>
-    {% endif %}
 
-    <div class="d-flex gap-2">
-        <button class="btn btn-outline-primary" onclick="copyToClipboard()">
-            <i class="bi bi-clipboard"></i> Copy Summary
+    <div class="d-flex gap-2 mb-4">
+        <button class="btn btn-primary" onclick="copyBlock('clip-all')">
+            <i class="bi bi-clipboard-check"></i> Copy Full Report (All Sections)
         </button>
     </div>
 
-    <textarea id="clipboard-text" class="d-none">{{ clipboard_text }}</textarea>
+    <textarea id="clip-current" class="d-none">{{ clipboard_current }}</textarea>
+    <textarea id="clip-next" class="d-none">{{ clipboard_next }}</textarea>
+    <textarea id="clip-changes" class="d-none">{{ clipboard_changes }}</textarea>
+    <textarea id="clip-all" class="d-none">{{ clipboard_text }}</textarea>
     <script>
-    function copyToClipboard() {
-        const text = document.getElementById('clipboard-text').value;
+    function copyBlock(id) {
+        const text = document.getElementById(id).value;
         navigator.clipboard.writeText(text).then(() => {
-            alert('Summary copied to clipboard!');
+            alert('Copied to clipboard!');
         });
     }
     </script>
