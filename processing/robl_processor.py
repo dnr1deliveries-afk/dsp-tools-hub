@@ -23,7 +23,6 @@ def _iso_week(ts: pd.Timestamp):
     iso = ts.isocalendar()
     return iso.year, iso.week
 
-
 def _snapshot(week_df: pd.DataFrame) -> pd.DataFrame:
     """Latest-date value per DSP/type within a single week's slice."""
     if week_df.empty:
@@ -37,6 +36,46 @@ def _snapshot(week_df: pd.DataFrame) -> pd.DataFrame:
         'Modified By': 'first',
         'reason_change': 'first',
     })
+
+
+def _dsp_breakdown(week_df: pd.DataFrame) -> dict:
+    """
+    Per-DSP granular breakdown within a single week's snapshot (latest date):
+        - avg_offset:  mean offset across ALL service types the DSP runs
+                        (includes 0-offset service types, so this reflects
+                        the DSP's true average burden, not just active ones)
+        - service_count: how many distinct service types the DSP runs
+        - top_services: top 3 service types by offset (descending)
+
+    Returns: {dsp: {avg_offset, service_count, top_services: [...]}}
+    """
+    if week_df.empty:
+        return {}
+    latest = week_df['OFD'].max()
+    snap = week_df[week_df['OFD'] == latest]
+
+    by_svc = snap.groupby(['DSP', 'Service Type']).agg({
+        '_offset': 'max',
+        '_final_input': 'min',
+    }).reset_index()
+
+    breakdown = {}
+    for dsp, grp in by_svc.groupby('DSP'):
+        grp_sorted = grp.sort_values('_offset', ascending=False)
+        top3 = [
+            {
+                'service_type': row['Service Type'],
+                'offset': int(row['_offset']),
+                'final_input': int(row['_final_input']),
+            }
+            for _, row in grp_sorted.head(3).iterrows()
+        ]
+        breakdown[dsp] = {
+            'avg_offset': round(float(grp['_offset'].mean()), 1),
+            'service_count': int(len(grp)),
+            'top_services': top3,
+        }
+    return breakdown
 
 
 def _week_label(week_df: pd.DataFrame) -> str:
@@ -110,6 +149,9 @@ def generate_robl_analysis(csv_content: str, reference_date=None) -> dict:
     cur_snap = _snapshot(cur_df)
     nxt_snap = _snapshot(nxt_df)
 
+    cur_breakdown = _dsp_breakdown(cur_df)
+    nxt_breakdown = _dsp_breakdown(nxt_df)
+
     def build_rows(snap: pd.DataFrame) -> list:
         rows = []
         for (dsp, dtype), row in snap.sort_values('_offset', ascending=False).iterrows():
@@ -167,6 +209,10 @@ def generate_robl_analysis(csv_content: str, reference_date=None) -> dict:
         'current_week': current_week_rows,
         'next_week': next_week_rows,
         'changes': changes,
+        'dsp_breakdown': {
+            'current': cur_breakdown,
+            'next': nxt_breakdown,
+        },
         'internal_only': True,
     }
 
@@ -218,6 +264,32 @@ def format_changes_clipboard(result: dict) -> str:
     return '\n'.join(lines)
 
 
+def _format_dsp_breakdown_section(title: str, breakdown: dict) -> list:
+    lines = [title]
+    if not breakdown:
+        lines.append('  (none)')
+        return lines
+    for dsp in sorted(breakdown.keys(), key=lambda d: breakdown[d]['avg_offset'], reverse=True):
+        b = breakdown[dsp]
+        lines.append(f"  • {dsp} — Avg Offset: {b['avg_offset']} min across {b['service_count']} service type(s)")
+        for svc in b['top_services']:
+            lines.append(f"      - {svc['service_type']}: {svc['offset']} min → {svc['final_input']} final input")
+    return lines
+
+
+def format_dsp_breakdown_clipboard(result: dict) -> str:
+    """Per-DSP average offset + top 3 service types, both weeks, plain text."""
+    if 'error' in result:
+        return f"Error: {result['error']}"
+    s = result['summary']
+    bd = result.get('dsp_breakdown', {})
+    lines = ['📋 DSP Breakdown — Avg Offset & Top 3 Service Types', '']
+    lines += _format_dsp_breakdown_section(f"Current Week ({s['current_week_range']}):", bd.get('current', {}))
+    lines.append('')
+    lines += _format_dsp_breakdown_section(f"W+1 Preview ({s['next_week_range']}):", bd.get('next', {}))
+    return '\n'.join(lines)
+
+
 def format_robl_clipboard(result: dict) -> str:
     """Full combined report — every section, nothing truncated. Single copy-all block."""
     if 'error' in result:
@@ -249,5 +321,11 @@ def format_robl_clipboard(result: dict) -> str:
         sign = '+' if c['change'] > 0 else ''
         lines.append(f"  \u2022 {c['dsp']} ({c['type']}): {c['current_week']} \u2192 {c['next_week']} "
                       f"({arrow} {sign}{c['change']})")
+
+    bd = result.get('dsp_breakdown', {})
+    lines.append('')
+    lines += _format_dsp_breakdown_section(f"DSP Breakdown — Current Week ({s['current_week_range']}):", bd.get('current', {}))
+    lines.append('')
+    lines += _format_dsp_breakdown_section(f"DSP Breakdown — W+1 Preview ({s['next_week_range']}):", bd.get('next', {}))
 
     return '\n'.join(lines)

@@ -51,7 +51,8 @@ from storage.station_store import (
 )
 from processing.robl_processor import(
     generate_robl_analysis, format_robl_clipboard,
-    format_current_week_clipboard, format_next_week_clipboard, format_changes_clipboard
+    format_current_week_clipboard, format_next_week_clipboard, format_changes_clipboard,
+    format_dsp_breakdown_clipboard
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ def robl():
     clipboard_current = ''
     clipboard_next = ''
     clipboard_changes = ''
+    clipboard_breakdown = ''
 
     if request.method == 'POST':
         csv_file = request.files.get('csv_file')
@@ -310,6 +312,7 @@ def robl():
                 clipboard_current = format_current_week_clipboard(results)
                 clipboard_next = format_next_week_clipboard(results)
                 clipboard_changes = format_changes_clipboard(results)
+                clipboard_breakdown = format_dsp_breakdown_clipboard(results)
                 s = results['summary']
                 flash(f"ROBL Analysis: Current week {s['current_active_count']} DSPs with offsets "
                       f"(max {s['max_offset_current']} min) | W+1 {s['next_active_count']} DSPs "
@@ -323,7 +326,10 @@ def robl():
         clipboard_current=clipboard_current,
         clipboard_next=clipboard_next,
         clipboard_changes=clipboard_changes,
+        clipboard_breakdown=clipboard_breakdown,
     )
+
+
 
 
 
