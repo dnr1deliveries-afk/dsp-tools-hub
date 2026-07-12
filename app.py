@@ -242,6 +242,7 @@ def inject_globals():
 # ── Session helpers ───────────────────────────────────────────────────────────
 _msg_store = defaultdict(dict)
 _returned_store = defaultdict(dict)
+_robl_result_store = {}  # sid -> last generate_robl_analysis() result, for HTML export
 
 
 def get_station() -> str:
