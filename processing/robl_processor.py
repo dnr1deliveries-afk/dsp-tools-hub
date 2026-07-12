@@ -329,3 +329,176 @@ def format_robl_clipboard(result: dict) -> str:
     lines += _format_dsp_breakdown_section(f"DSP Breakdown — W+1 Preview ({s['next_week_range']}):", bd.get('next', {}))
 
     return '\n'.join(lines)
+
+
+_HTML_CSS = """
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #212529; margin: 0; padding: 24px; background: #fff; }
+  h1 { font-size: 22px; margin-bottom: 2px; }
+  .subtitle { color: #6c757d; margin-bottom: 20px; font-size: 13px; }
+  .cards { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .card { border: 1px solid #dee2e6; border-radius: 6px; padding: 14px 18px; flex: 1; min-width: 180px; text-align: center; }
+  .card.warning { border-color: #ffc107; }
+  .card.info { border-color: #0dcaf0; }
+  .card.danger { border-color: #dc3545; }
+  .card.success { border-color: #198754; }
+  .card .num { font-size: 28px; font-weight: 700; margin: 0; }
+  .card.warning .num { color: #b38600; }
+  .card.info .num { color: #0aa2c0; }
+  .card.danger .num { color: #dc3545; }
+  .card.success .num { color: #198754; }
+  .card .label { font-size: 12px; color: #495057; margin: 4px 0 0; }
+  .card .range { font-size: 11px; color: #6c757d; }
+  .section { margin-bottom: 28px; }
+  .section-header { background: #212529; color: #fff; padding: 8px 14px; font-size: 14px; font-weight: 600;
+                     border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; }
+  .badge { background: #6c757d; color: #fff; border-radius: 10px; padding: 2px 10px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table th { background: #343a40; color: #fff; padding: 6px 10px; text-align: left; }
+  table td { padding: 6px 10px; border-bottom: 1px solid #e9ecef; }
+  table tr:nth-child(even) { background: #f8f9fa; }
+  tr.high { background: #f8d7da !important; }
+  tr.med { background: #fff3cd !important; }
+  .type-badge { border-radius: 8px; padding: 1px 8px; font-size: 10.5px; color: #fff; }
+  .type-lev { background: #0dcaf0; }
+  .type-std { background: #6c757d; }
+  .up { color: #dc3545; font-weight: 600; }
+  .down { color: #198754; font-weight: 600; }
+  .flat { color: #6c757d; }
+  .warn-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 10px 14px;
+                 font-size: 13px; margin-bottom: 18px; }
+  .bd-grid { display: flex; gap: 24px; }
+  .bd-col { flex: 1; }
+  .bd-col h4 { font-size: 13px; color: #6c757d; margin-bottom: 6px; }
+  .svc-line { font-size: 11.5px; color: #495057; margin: 1px 0; }
+  .footer-note { font-size: 11px; color: #6c757d; margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 10px; }
+  @media print { .card, table { break-inside: avoid; } .section { break-inside: avoid; } }
+</style>
+"""
+
+
+def _html_type_badge(t: str) -> str:
+    cls = 'type-lev' if t == 'LEV' else 'type-std'
+    return f'<span class="type-badge {cls}">{t}</span>'
+
+
+def _html_row_class(offset: int) -> str:
+    if offset >= 20:
+        return 'high'
+    if offset >= 10:
+        return 'med'
+    return ''
+
+
+def _html_table_section(title: str, badge: str, rows: list) -> str:
+    out = [f'<div class="section"><div class="section-header"><span>{title}</span><span class="badge">{badge}</span></div>']
+    out.append('<table><thead><tr><th>DSP</th><th>Type</th><th>Offset (min)</th><th>Final Input</th>'
+                '<th>Total Reduction</th><th>Modified By</th><th>Reason</th></tr></thead><tbody>')
+    if not rows:
+        out.append('<tr><td colspan="7" style="text-align:center;color:#6c757d;">No active offsets</td></tr>')
+    for row in rows:
+        out.append(
+            f'<tr class="{_html_row_class(row["offset"])}">'
+            f'<td><strong>{row["dsp"]}</strong></td>'
+            f'<td>{_html_type_badge(row["type"])}</td>'
+            f'<td><strong>{row["offset"]}</strong></td>'
+            f'<td>{row["final_input"]}</td>'
+            f'<td>{row["total_reduction"]}</td>'
+            f'<td>{row["modified_by"]}</td>'
+            f'<td>{row["reason"]}</td>'
+            f'</tr>'
+        )
+    out.append('</tbody></table></div>')
+    return ''.join(out)
+
+
+def _html_breakdown_col(label: str, week_bd: dict) -> str:
+    out = [f'<div class="bd-col"><h4>{label}</h4><table><thead><tr><th>DSP</th><th>Avg Offset</th>'
+           '<th>Top Service Types</th></tr></thead><tbody>']
+    if not week_bd:
+        out.append('<tr><td colspan="3" style="text-align:center;color:#6c757d;">No data</td></tr>')
+    for dsp, b in sorted(week_bd.items(), key=lambda kv: kv[1]['avg_offset'], reverse=True):
+        svc_lines = ''.join(
+            f'<div class="svc-line">{sv["service_type"]}: <strong>{sv["offset"]}</strong> min</div>'
+            for sv in b['top_services']
+        )
+        out.append(f'<tr><td><strong>{dsp}</strong></td><td>{b["avg_offset"]} min</td><td>{svc_lines}</td></tr>')
+    out.append('</tbody></table></div>')
+    return ''.join(out)
+
+
+def generate_robl_html_report(result: dict, station: str = '', generated_label: str = '') -> str:
+    """
+    Render the full ROBL analysis as a single self-contained HTML document
+    (inline CSS, no external dependencies) preserving the same visual
+    formatting as the web app — summary cards, colour-coded severity rows,
+    LEV/Standard type badges, trend arrows, and the DSP breakdown grid.
+
+    Suitable for direct download/open in a browser, or conversion to PDF.
+    """
+    if 'error' in result:
+        return f"<html><body><h1>ROBL Analysis Error</h1><p>{result['error']}</p></body></html>"
+
+    s = result['summary']
+    station_line = f"{station} &mdash; " if station else ''
+
+    html = ['<!DOCTYPE html><html><head><meta charset="utf-8"><title>ROBL PvA Offset Analysis</title>',
+            _HTML_CSS, '</head><body>']
+
+    html.append('<h1>ROBL PvA Offset Analysis</h1>')
+    html.append(f'<p class="subtitle">{station_line}Internal use only, not shared with DSPs'
+                f'{" &nbsp;|&nbsp; Generated " + generated_label if generated_label else ""}</p>')
+
+    if s.get('excluded_rows'):
+        html.append(f'<div class="warn-banner">&#9888; {s["excluded_rows"]} row(s) outside the current week / '
+                     f'W+1 window were excluded ({s["excluded_range"]}).</div>')
+
+    html.append('<div class="cards">')
+    html.append(f'<div class="card warning"><p class="num">{s["current_active_count"]}</p>'
+                f'<p class="label">Current Week &mdash; DSPs w/ Offsets</p>'
+                f'<p class="range">{s["current_week_range"]}</p></div>')
+    html.append(f'<div class="card info"><p class="num">{s["next_active_count"]}</p>'
+                f'<p class="label">W+1 &mdash; DSPs w/ Offsets</p>'
+                f'<p class="range">{s["next_week_range"]}</p></div>')
+    html.append(f'<div class="card danger"><p class="num">{s["max_offset_next"]}</p>'
+                f'<p class="label">Max W+1 Offset (min) &mdash; {s["max_offset_next_dsp"]}</p></div>')
+    html.append(f'<div class="card success"><p class="num">{s["clear_count"]}</p>'
+                f'<p class="label">DSPs Clear (both weeks)</p></div>')
+    html.append('</div>')
+
+    html.append(_html_table_section('Current Week Active Offsets', s['current_week_range'], result['current_week']))
+    html.append(_html_table_section('W+1 Preview Active Offsets', s['next_week_range'], result['next_week']))
+
+    html.append(f'<div class="section"><div class="section-header"><span>Week-on-Week Changes</span>'
+                f'<span class="badge">{s["current_week_range"]} &rarr; {s["next_week_range"]}</span></div>')
+    html.append('<table><thead><tr><th>DSP</th><th>Type</th><th>Current Week</th><th>W+1</th>'
+                '<th>Change</th><th>Trend</th></tr></thead><tbody>')
+    if not result['changes']:
+        html.append('<tr><td colspan="6" style="text-align:center;color:#6c757d;">No changes between weeks</td></tr>')
+    for c in result['changes']:
+        if c['change'] > 0:
+            cls, arrow, sign = 'up', '&#8593;', '+'
+        elif c['change'] < 0:
+            cls, arrow, sign = 'down', '&#8595;', ''
+        else:
+            cls, arrow, sign = 'flat', '&#8594;', ''
+        html.append(
+            f'<tr><td><strong>{c["dsp"]}</strong></td><td>{_html_type_badge(c["type"])}</td>'
+            f'<td>{c["current_week"]}</td><td>{c["next_week"]}</td>'
+            f'<td class="{cls}">{sign}{c["change"]}</td><td class="{cls}">{arrow}</td></tr>'
+        )
+    html.append('</tbody></table></div>')
+
+    bd = result.get('dsp_breakdown', {})
+    html.append('<div class="section"><div class="section-header">'
+                 '<span>DSP Breakdown &mdash; Avg Offset &amp; Top 3 Service Types</span></div>')
+    html.append('<div class="bd-grid">')
+    html.append(_html_breakdown_col(f'Current Week ({s["current_week_range"]})', bd.get('current', {})))
+    html.append(_html_breakdown_col(f'W+1 Preview ({s["next_week_range"]})', bd.get('next', {})))
+    html.append('</div></div>')
+
+    html.append('<p class="footer-note">DSP Tools Hub &mdash; ROBL PvA Offset Analysis. '
+                 'Internal station management tool. Not for external distribution.</p>')
+    html.append('</body></html>')
+
+    return ''.join(html)
