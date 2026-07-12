@@ -333,48 +333,49 @@ def format_robl_clipboard(result: dict) -> str:
 
 _HTML_CSS = """
 <style>
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #212529; margin: 0; padding: 24px; background: #fff; }
-  h1 { font-size: 22px; margin-bottom: 2px; }
-  .subtitle { color: #6c757d; margin-bottom: 20px; font-size: 13px; }
-  .cards { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-  .card { border: 1px solid #dee2e6; border-radius: 6px; padding: 14px 18px; flex: 1; min-width: 180px; text-align: center; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #212529; margin: 0; padding: 28px; background: #fff; font-size: 16px; }
+  h1 { font-size: 30px; margin-bottom: 4px; }
+  .subtitle { color: #6c757d; margin-bottom: 24px; font-size: 16px; }
+  .cards { display: flex; gap: 14px; margin-bottom: 28px; flex-wrap: wrap; }
+  .card { border: 1px solid #dee2e6; border-radius: 6px; padding: 18px 20px; flex: 1; min-width: 200px; text-align: center; }
   .card.warning { border-color: #ffc107; }
   .card.info { border-color: #0dcaf0; }
   .card.danger { border-color: #dc3545; }
   .card.success { border-color: #198754; }
-  .card .num { font-size: 28px; font-weight: 700; margin: 0; }
+  .card .num { font-size: 38px; font-weight: 700; margin: 0; }
   .card.warning .num { color: #b38600; }
   .card.info .num { color: #0aa2c0; }
   .card.danger .num { color: #dc3545; }
   .card.success .num { color: #198754; }
-  .card .label { font-size: 12px; color: #495057; margin: 4px 0 0; }
-  .card .range { font-size: 11px; color: #6c757d; }
-  .section { margin-bottom: 28px; }
-  .section-header { background: #212529; color: #fff; padding: 8px 14px; font-size: 14px; font-weight: 600;
+  .card .label { font-size: 15px; color: #495057; margin: 6px 0 0; }
+  .card .range { font-size: 14px; color: #6c757d; }
+  .section { margin-bottom: 32px; }
+  .section-header { background: #212529; color: #fff; padding: 12px 18px; font-size: 18px; font-weight: 600;
                      border-radius: 6px 6px 0 0; display: flex; justify-content: space-between; align-items: center; }
-  .badge { background: #6c757d; color: #fff; border-radius: 10px; padding: 2px 10px; font-size: 11px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  table th { background: #343a40; color: #fff; padding: 6px 10px; text-align: left; }
-  table td { padding: 6px 10px; border-bottom: 1px solid #e9ecef; }
+  .badge { background: #6c757d; color: #fff; border-radius: 10px; padding: 4px 14px; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  table th { background: #343a40; color: #fff; padding: 10px 14px; text-align: left; }
+  table td { padding: 10px 14px; border-bottom: 1px solid #e9ecef; }
   table tr:nth-child(even) { background: #f8f9fa; }
   tr.high { background: #f8d7da !important; }
   tr.med { background: #fff3cd !important; }
-  .type-badge { border-radius: 8px; padding: 1px 8px; font-size: 10.5px; color: #fff; }
+  .type-badge { border-radius: 8px; padding: 3px 12px; font-size: 14px; color: #fff; }
   .type-lev { background: #0dcaf0; }
   .type-std { background: #6c757d; }
   .up { color: #dc3545; font-weight: 600; }
   .down { color: #198754; font-weight: 600; }
   .flat { color: #6c757d; }
-  .warn-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 10px 14px;
-                 font-size: 13px; margin-bottom: 18px; }
-  .bd-grid { display: flex; gap: 24px; }
+  .warn-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 14px 18px;
+                 font-size: 16px; margin-bottom: 22px; }
+  .bd-grid { display: flex; gap: 28px; }
   .bd-col { flex: 1; }
-  .bd-col h4 { font-size: 13px; color: #6c757d; margin-bottom: 6px; }
-  .svc-line { font-size: 11.5px; color: #495057; margin: 1px 0; }
-  .footer-note { font-size: 11px; color: #6c757d; margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 10px; }
+  .bd-col h4 { font-size: 17px; color: #6c757d; margin-bottom: 8px; }
+  .svc-line { font-size: 14.5px; color: #495057; margin: 2px 0; }
+  .footer-note { font-size: 14px; color: #6c757d; margin-top: 34px; border-top: 1px solid #dee2e6; padding-top: 12px; }
   @media print { .card, table { break-inside: avoid; } .section { break-inside: avoid; } }
 </style>
 """
+
 
 
 def _html_type_badge(t: str) -> str:
