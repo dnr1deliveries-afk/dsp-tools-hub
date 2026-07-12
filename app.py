@@ -334,6 +334,25 @@ def robl():
     )
 
 
+@app.route('/robl/export-html')
+def robl_export_html():
+    """Download the last ROBL analysis as a standalone, styled HTML report."""
+    sid = session.get('sid')
+    results = _robl_result_store.get(sid) if sid else None
+    if not results or 'error' in results:
+        flash('Run a ROBL analysis first, then export.', 'warning')
+        return redirect(url_for('robl'))
+
+    station = get_station() or ''
+    generated_label = datetime.now().strftime('%d %b %Y %H:%M')
+    html = generate_robl_html_report(results, station=station, generated_label=generated_label)
+
+    filename = f"ROBL_Offset_Report_{datetime.now().strftime('%Y-%m-%d')}.html"
+    return Response(
+        html,
+        mimetype='text/html',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
 
 
 
