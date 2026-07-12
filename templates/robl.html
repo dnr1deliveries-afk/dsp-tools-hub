@@ -262,6 +262,9 @@
         <button class="btn btn-primary" onclick="copyBlock('clip-all')">
             <i class="bi bi-clipboard-check"></i> Copy Full Report (All Sections)
         </button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('robl_export_html') }}">
+            <i class="bi bi-file-earmark-code"></i> Export as HTML
+        </a>
     </div>
 
     <textarea id="clip-current" class="d-none">{{ clipboard_current }}</textarea>
