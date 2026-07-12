@@ -746,47 +746,74 @@ def generate_carrier_inv_messages(file_bytes: bytes, safe_mode: bool = False) ->
 
 
 # ============================================================================
-# VSA — COMPLIANT v2.0
+# VSA - v2.1 (VIN/VRN detail restored per PoE policy update 2026-07-12)
 # ============================================================================
 
 def generate_vsa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
-    COMPLIANT v2.0: DSP-level vehicle pending count.
-    
-    Output: "Your DSP has X vehicles pending VSA inspection"
-    
-    NO VINs, NO VRNs, NO vehicle-level detail.
+    v2.1: DSP-level vehicle pending count WITH per-vehicle VIN/VRN detail.
+
+    Policy note (2026-07-12): PoE (Principles of Engagement) rules were
+    updated to permit sharing VIN/VRN vehicle-level detail with DSPs for
+    VSA pending-inspection tracking. This reverses the v2.0 "COMPLIANT"
+    rebuild (Week 21) restriction, which had stripped VIN/VRN from this
+    message deliberately under the prior PoE reading. If PoE guidance
+    changes again, re-apply the count-only restriction (see git history
+    around Week 21 for the previous implementation).
+
+    Output per DSP:
+        "VSA Summary - {DSP}
+         Vehicles Pending Inspection: {count}
+         VIN: ...  VRN: ...
+         VIN: ...  VRN: ...
+         ..."
     """
-    dsp_counts = defaultdict(int)
-    
+    dsp_vehicles = defaultdict(list)
+
     for row in _open_csv(file_bytes):
-        inspection = str(row.get('inspection_passed', '') or '').strip().upper()
-        if inspection != 'N':
-            continue
-        
+        # Authoritative pending signal: inspection_date is blank => no audit
+        # conducted yet on this vehicle (confirmed against real export
+        # 2026-07-12: inspection_date blank correlates 1:1 with
+        # inspection_passed == 'N' in current data, but inspection_date is
+        # the field that actually carries the "has this been audited" fact).
+        inspection_date = str(row.get('inspection_date', '') or '').strip().strip('"')
+        if inspection_date:
+            continue  # audit already conducted on this vehicle
+
         dsp = str(row.get('dsp', '') or '').strip().upper()
         if not dsp:
             continue
-        
-        dsp_counts[dsp] += 1
-    
-    if not dsp_counts:
-        raise ValueError("No vehicles pending VSA found (inspection_passed = 'N').")
-    
+
+        vin = str(row.get('vin', '') or '').strip().upper()
+        # Real exports use 'vrns'; also accept 'vrn' as a fallback variant.
+        vrn = str(row.get('vrns', '') or row.get('vrn', '') or '').strip().upper()
+
+        dsp_vehicles[dsp].append({'vin': vin or '-', 'vrn': vrn or '-'})
+
+    if not dsp_vehicles:
+        raise ValueError("No vehicles pending VSA found (inspection_date is blank for none of the rows).")
+
     messages = {}
-    for dsp in sorted(dsp_counts.keys()):
-        count = dsp_counts[dsp]
-        
+    for dsp in sorted(dsp_vehicles.keys()):
+        vehicles = dsp_vehicles[dsp]
+        count = len(vehicles)
+
+        vehicle_lines = '\n'.join(
+            f'  \u2022 VIN: {v["vin"]}   VRN: {v["vrn"]}' for v in vehicles
+        )
+
         content = (
-            f'🛡️ VSA Summary — {dsp}\n'
+            f'\U0001F6E1\uFE0F VSA Summary - {dsp}\n'
             f'Current Cycle\n\n'
             f'Vehicles Pending Inspection: {count}\n\n'
+            f'{vehicle_lines}\n\n'
             f'Vehicle Safety Audits are part of the bi-weekly inspection cycle.'
             f'{COMPLIANT_FOOTER}'
         )
         messages[dsp] = wrap_message(content)
-    
+
     return messages
+
 
 
 # ============================================================================

@@ -171,11 +171,11 @@ TOOLS = {
         'name':      'VSA',
         'icon':      'bi-shield-check',
         'emoji':     '🛡️',
-        'desc':      'Vehicles pending inspection count per DSP',
+        'desc':      'Vehicles pending inspection per DSP, with VIN/VRN detail',
         'files':     [{'id': 'csv_file', 'label': 'VSA Deep Dive CSV',
                        'hint': 'Dive Deep Data Total Expected VSA Audits (Cycle)*.csv', 'required': True}],
         'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows vehicle count only, no VIN/VRN detail',
+        'compliant_note': '⚠️ Contains vehicle-level detail (VIN/VRN) — permitted per PoE policy update 2026-07-12',
     },
     'tracer_bridge': {
         'name':      'Tracer Bridge',
