@@ -26,7 +26,7 @@ import requests
 from collections import defaultdict
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, session, jsonify
+    flash, session, jsonify, Response
 )
 from processing.dsp_core import (
     generate_chase_messages,
@@ -52,7 +52,7 @@ from storage.station_store import (
 from processing.robl_processor import(
     generate_robl_analysis, format_robl_clipboard,
     format_current_week_clipboard, format_next_week_clipboard, format_changes_clipboard,
-    format_dsp_breakdown_clipboard
+    format_dsp_breakdown_clipboard, generate_robl_html_report
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -314,6 +314,9 @@ def robl():
                 clipboard_next = format_next_week_clipboard(results)
                 clipboard_changes = format_changes_clipboard(results)
                 clipboard_breakdown = format_dsp_breakdown_clipboard(results)
+                sid = session.get('sid')
+                if sid:
+                    _robl_result_store[sid] = results
                 s = results['summary']
                 flash(f"ROBL Analysis: Current week {s['current_active_count']} DSPs with offsets "
                       f"(max {s['max_offset_current']} min) | W+1 {s['next_active_count']} DSPs "
