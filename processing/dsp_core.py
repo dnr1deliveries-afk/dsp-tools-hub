@@ -14,7 +14,7 @@ REMOVED TOOLS (no compliant path):
 
 MODIFIED TOOLS (DSP totals only):
 - Chase: Total scrub errors per DSP
-- Pickups: Total awaiting pickup per DSP
+- Pickups: Total awaiting pickup per DSP, with shipment ID detail per type (v2.1)
 - Rostering: Compliance % per DSP
 - STC: Fleet compliance % per DSP
 - CC: Contact compliance % per DSP
@@ -183,33 +183,39 @@ def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
 
 
 # ============================================================================
-# DSP PICKUPS — COMPLIANT v2.0
+# DSP PICKUPS — v2.1 (shipment ID detail added per DSP request 2026-08-13)
 # ============================================================================
 
 def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
                               safe_mode: bool = False) -> tuple:
     """
-    COMPLIANT v2.0: DSP-level totals only.
-    
-    Output: "Your DSP has X packages awaiting pickup"
-    
-    NO route lookup, NO tracking IDs, NO action requests.
+    v2.1: DSP-level totals WITH per-shipment tracking ID detail, grouped
+    by pickup type.
+
+    Shipment IDs are package-level identifiers (not DA/personnel-level),
+    consistent with the tracking ID listing already used in the Chase
+    tool and the VIN/VRN vehicle-level detail restored in VSA v2.1
+    (PoE policy update 2026-07-12). NO route lookup, NO DA-level data.
+
+    Output per DSP:
+        "Your DSP has X packages awaiting pickup"
+        followed by shipment IDs listed under each pickup-type category.
     """
-    dsp_counts = defaultdict(lambda: {'total': 0, 'by_type': defaultdict(int)})
+    dsp_counts = defaultdict(lambda: {'total': 0, 'by_type': defaultdict(list)})
     pickup_date = None
-    
+
     for row in _open_csv(pickup_bytes):
         dsp = row.get('Dsp', '').strip()
         tid = row.get('trackingId', '').strip()
         ptype = row.get('Pick up Type', '').strip().upper()
-        
+
         if not pickup_date:
             sw = row.get('Pick up Start Window', '')
             pickup_date = sw.split(' ')[0] if sw else datetime.now().strftime('%d/%m/%Y')
-        
+
         if not (dsp and tid):
             continue
-        
+
         # Categorise pickup type
         if ptype == 'LOCKER':
             category = 'Locker'
@@ -219,38 +225,39 @@ def generate_pickup_messages(pickup_bytes: bytes, search_bytes: bytes = None,
             category = 'Home'
         else:
             category = ptype.title()
-        
+
         dsp_counts[dsp]['total'] += 1
-        dsp_counts[dsp]['by_type'][category] += 1
-    
+        dsp_counts[dsp]['by_type'][category].append(tid)
+
     if not pickup_date:
         pickup_date = datetime.now().strftime('%d/%m/%Y')
-    
+
     messages = {}
     for dsp in sorted(dsp_counts.keys()):
         data = dsp_counts[dsp]
         total = data['total']
-        
+
         if total == 0:
             continue
-        
-        # Build type breakdown
-        type_lines = []
-        for ptype, count in sorted(data['by_type'].items(), key=lambda x: -x[1]):
-            type_lines.append(f'  • {ptype}: {count}')
-        
-        type_summary = '\n'.join(type_lines) if type_lines else '  • No breakdown available'
-        
+
+        # Build type breakdown with shipment IDs nested under each category
+        type_sections = []
+        for ptype, tids in sorted(data['by_type'].items(), key=lambda x: -len(x[1])):
+            tid_lines = '\n'.join(f'      {tid}' for tid in tids)
+            type_sections.append(f'  \u2022 {ptype} ({len(tids)}):\n{tid_lines}')
+
+        type_summary = '\n'.join(type_sections) if type_sections else '  • No breakdown available'
+
         content = (
             f'📬 Pickup Summary — {dsp}\n'
             f'Date: {pickup_date}\n\n'
             f'Your DSP has {total} package(s) awaiting pickup.\n\n'
-            f'Breakdown by type:\n'
+            f'Breakdown by type (shipment IDs):\n'
             f'{type_summary}'
             f'{COMPLIANT_FOOTER}'
         )
         messages[dsp] = wrap_message(content)
-    
+
     return messages, pickup_date
 
 
@@ -614,55 +621,49 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
 
 # ============================================================================
-# UNRETURNED BAGS — COMPLIANT v2.0
+# UNRETURNED BAGS — v2.1 (route + bag ID detail)
 # ============================================================================
 
 def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
-    COMPLIANT v2.0: DSP-level unreturned bag totals.
-    
-    Output: "Your DSP has X unreturned bags"
-    
-    NO route-level breakdown, NO route flags.
+    v2.1: Route-level unreturned bag breakdown with individual bag IDs.
+
+    Output per DSP: header → date range → per-route block with bag IDs listed.
     """
-    dsp_data = defaultdict(lambda: {
-        'total_bags': 0,
-        'oldest_date': None,
-        'newest_date': None,
-        'dates': set()
-    })
-    
+    from collections import OrderedDict
+
+    # dsp -> route_code -> list of bag IDs
+    dsp_routes = defaultdict(lambda: defaultdict(list))
+    dsp_dates = defaultdict(set)
+
     for row in _open_csv(file_bytes):
         dsp = str(row.get('DSP', '') or '').strip()
         bag = str(row.get('Bag', '') or '').strip()
+        route = str(row.get('Route Code', '') or '').strip()
         date_raw = str(row.get('Date', '') or '').strip()
-        
+
         if not dsp or not bag:
             continue
-        
+
         date_str = fmt_date(date_raw)
         if date_str:
-            dsp_data[dsp]['dates'].add(date_str)
-        
-        dsp_data[dsp]['total_bags'] += 1
-    
-    if not dsp_data:
-        raise ValueError("No bag data found. Check the file contains DSP, Bag and Date columns.")
-    
+            dsp_dates[dsp].add(date_str)
+
+        dsp_routes[dsp][route].append(bag)
+
+    if not dsp_routes:
+        raise ValueError("No bag data found. Check the file contains DSP, Route Code, Bag and Date columns.")
+
     messages = {}
-    for dsp in sorted(dsp_data.keys()):
-        data = dsp_data[dsp]
-        
-        total = data['total_bags']
+    for dsp in sorted(dsp_routes.keys()):
+        routes = dsp_routes[dsp]
+        total = sum(len(bags) for bags in routes.values())
         if total == 0:
             continue
-        
-        # Calculate date range and oldest
-        dates = sorted(data['dates'], key=parse_date)
-        oldest = dates[0] if dates else 'Unknown'
+
+        dates = sorted(dsp_dates[dsp], key=parse_date)
         date_range = format_date_range(dates)
-        
-        # Calculate age of oldest
+
         age_note = ''
         if dates:
             try:
@@ -671,15 +672,22 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
                 age_note = f' (oldest: {days_old} day{"s" if days_old != 1 else ""} ago)'
             except:
                 pass
-        
-        content = (
-            f'👜 Unreturned Bags Summary — {dsp}\n'
-            f'Period: {date_range}\n\n'
-            f'Total Unreturned Bags: {total}{age_note}'
-            f'{COMPLIANT_FOOTER}'
-        )
+
+        lines = [
+            f'\U0001f9fa Unreturned Bags \u2014 {dsp}',
+            f'Period: {date_range}',
+            f'Total Unreturned: {total}{age_note}',
+            '',
+        ]
+        for route in sorted(routes.keys()):
+            bag_list = routes[route]
+            lines.append(f'({route}) \u2014 {len(bag_list)} bag{"s" if len(bag_list) != 1 else ""}')
+            for b in bag_list:
+                lines.append(f'  \u2022 {b}')
+
+        content = '\n'.join(lines) + COMPLIANT_FOOTER
         messages[dsp] = wrap_message(content)
-    
+
     return messages
 
 
