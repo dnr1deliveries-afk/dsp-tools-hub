@@ -621,20 +621,17 @@ def generate_noa_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
 
 
 # ============================================================================
-# UNRETURNED BAGS — v2.1 (route + bag ID detail)
+# UNRETURNED BAGS — v2.2 (date -> route -> bag ID breakdown)
 # ============================================================================
 
 def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
     """
-    v2.1: Route-level unreturned bag breakdown with individual bag IDs.
+    v2.2: Bags grouped by date, then route, then individual bag IDs.
 
-    Output per DSP: header → date range → per-route block with bag IDs listed.
+    Output per DSP: header → total → per-day blocks → per-route with bag IDs.
     """
-    from collections import OrderedDict
-
-    # dsp -> route_code -> list of bag IDs
-    dsp_routes = defaultdict(lambda: defaultdict(list))
-    dsp_dates = defaultdict(set)
+    # dsp -> date_str -> route_code -> list of bag IDs
+    dsp_data = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
 
     for row in _open_csv(file_bytes):
         dsp = str(row.get('DSP', '') or '').strip()
@@ -645,29 +642,33 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
         if not dsp or not bag:
             continue
 
-        date_str = fmt_date(date_raw)
-        if date_str:
-            dsp_dates[dsp].add(date_str)
+        date_str = fmt_date(date_raw) or 'Unknown'
+        dsp_data[dsp][date_str][route].append(bag)
 
-        dsp_routes[dsp][route].append(bag)
-
-    if not dsp_routes:
+    if not dsp_data:
         raise ValueError("No bag data found. Check the file contains DSP, Route Code, Bag and Date columns.")
 
     messages = {}
-    for dsp in sorted(dsp_routes.keys()):
-        routes = dsp_routes[dsp]
-        total = sum(len(bags) for bags in routes.values())
+    for dsp in sorted(dsp_data.keys()):
+        days = dsp_data[dsp]
+        total = sum(
+            len(bags)
+            for routes in days.values()
+            for bags in routes.values()
+        )
         if total == 0:
             continue
 
-        dates = sorted(dsp_dates[dsp], key=parse_date)
-        date_range = format_date_range(dates)
+        all_dates = sorted([d for d in days.keys() if d != 'Unknown'], key=parse_date)
+        if 'Unknown' in days:
+            all_dates.append('Unknown')
+
+        date_range = format_date_range([d for d in all_dates if d != 'Unknown'])
 
         age_note = ''
-        if dates:
+        if all_dates and all_dates[0] != 'Unknown':
             try:
-                oldest_dt = datetime.strptime(dates[0], '%d/%m/%Y')
+                oldest_dt = datetime.strptime(all_dates[0], '%d/%m/%Y')
                 days_old = (datetime.now() - oldest_dt).days
                 age_note = f' (oldest: {days_old} day{"s" if days_old != 1 else ""} ago)'
             except:
@@ -677,13 +678,18 @@ def generate_bags_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
             f'\U0001f9fa Unreturned Bags \u2014 {dsp}',
             f'Period: {date_range}',
             f'Total Unreturned: {total}{age_note}',
-            '',
         ]
-        for route in sorted(routes.keys()):
-            bag_list = routes[route]
-            lines.append(f'({route}) \u2014 {len(bag_list)} bag{"s" if len(bag_list) != 1 else ""}')
-            for b in bag_list:
-                lines.append(f'  \u2022 {b}')
+
+        for date_str in all_dates:
+            routes = days[date_str]
+            day_total = sum(len(b) for b in routes.values())
+            lines.append('')
+            lines.append(f'\U0001f4c5 {date_str} \u2014 {day_total} bag{"s" if day_total != 1 else ""}')
+            for route in sorted(routes.keys()):
+                bag_list = routes[route]
+                lines.append(f'({route}) \u2014 {len(bag_list)} bag{"s" if len(bag_list) != 1 else ""}')
+                for b in bag_list:
+                    lines.append(f'  \u2022 {b}')
 
         content = '\n'.join(lines) + COMPLIANT_FOOTER
         messages[dsp] = wrap_message(content)
