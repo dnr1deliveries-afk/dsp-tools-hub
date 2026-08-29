@@ -41,6 +41,7 @@ from processing.dsp_core import (
     generate_carrier_inv_messages,
     generate_vsa_messages,
     generate_tracer_bridge_messages,
+    generate_abortive_messages,
     # Removed: generate_nursery_overuse_messages (no compliant path)
     # Removed: generate_ridealong_overuse_messages (no compliant path)
 )
@@ -204,6 +205,18 @@ TOOLS = {
     },
 
     # ──────────────────────────────────────────────────────────────────────────
+    'abortive_routes': {
+        'name':      'Abortive Routes',
+        'icon':      'bi-exclamation-triangle',
+        'emoji':     '⚠️',
+        'desc':      'Abortive/cut routes per DSP for today, with cycle, service type and depart time',
+        'files':     [{'id': 'csv_file', 'label': 'Abortive Routes Export',
+                       'hint': 'Abortive routes export (.tsv/.csv) — Day, Month, Year, Service Type, Cycle, Route Length, DSP, Cuts, Depart Time',
+                       'required': True}],
+        'safe_affected': False,
+        'compliant_note': '✅ Compliant: Shows route length/service type/time detail, no DA/personnel detail',
+    },
+
     # REMOVED TOOLS (No compliant path under Week 21 framework)
     # ──────────────────────────────────────────────────────────────────────────
     # 'nursery_overuse' — REMOVED: Directs DSP DA deployment decisions
@@ -224,6 +237,7 @@ GENERATORS = {
     'carrier_inv':        generate_carrier_inv_messages,
     'vsa':                generate_vsa_messages,
     'tracer_bridge':      generate_tracer_bridge_messages,
+    'abortive_routes':    generate_abortive_messages,
     # Removed: nursery_overuse, ridealong_overuse
 }
 

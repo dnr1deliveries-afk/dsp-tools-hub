@@ -998,3 +998,85 @@ def generate_ridealong_overuse_messages(file_bytes: bytes, safe_mode: bool = Fal
         "OPS cannot flag or direct how DSPs staff their routes."
     )
 
+
+
+# ============================================================================
+# ABORTIVE ROUTES
+# ============================================================================
+
+def _open_delimited(file_bytes: bytes):
+    """Open a CSV or TSV export, auto-detecting the delimiter."""
+    text = file_bytes.decode('utf-8-sig')
+    sample = text[:2000]
+    delimiter = '\t' if sample.count('\t') >= sample.count(',') else ','
+    return csv.DictReader(io.StringIO(text), delimiter=delimiter)
+
+
+def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+    """
+    Abortive Routes — per-DSP breakdown of routes aborted/cut today.
+
+    Input columns: Day, Month, Year, Service Type, Cycle, Route Length,
+                    DSP, Cuts, Depart Time
+
+    Returns: {dsp: message_text}
+    """
+    reader = _open_delimited(file_bytes)
+
+    by_dsp = defaultdict(list)
+    date_label = ''
+
+    for row in reader:
+        dsp = (row.get('DSP') or '').strip().upper()
+        if not dsp:
+            continue
+
+        day   = (row.get('Day') or '').strip()
+        month = (row.get('Month') or '').strip()
+        year  = (row.get('Year') or '').strip()
+        if day and month and year and not date_label:
+            date_label = f'{day} {month} {year}'
+
+        by_dsp[dsp].append({
+            'service_type': (row.get('Service Type') or '').strip(),
+            'cycle':        (row.get('Cycle') or '').strip(),
+            'length':       (row.get('Route Length') or '').strip(),
+            'depart':       (row.get('Depart Time') or '').strip(),
+            'cuts':         (row.get('Cuts') or '1').strip(),
+        })
+
+    if not date_label:
+        date_label = datetime.now().strftime('%d %B %Y')
+
+    messages = {}
+    for dsp, routes in by_dsp.items():
+        routes.sort(key=lambda r: r['depart'])
+
+        total_cuts = 0
+        for r in routes:
+            try:
+                total_cuts += int(float(r['cuts'] or 1))
+            except ValueError:
+                total_cuts += 1
+
+        lines = [
+            'Good morning',
+            '',
+            'Please see the below abortive routes for today:',
+            '',
+            '```',
+        ]
+        for r in routes:
+            lines.append(
+                f"Cycle: {r['cycle']:<10} | {r['service_type']:<50} | "
+                f"{r['length']:<9} | Depart: {r['depart']:<8} | Cuts: {r['cuts']}"
+            )
+        lines.append('```')
+        lines.append('')
+        lines.append(f"Total abortive routes: {total_cuts}")
+        lines.append('')
+        lines.append('Appreciate your support.')
+
+        messages[dsp] = '\n'.join(lines)
+
+    return messages
