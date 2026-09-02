@@ -1,42 +1,6 @@
 {
   "ATZC": {
     "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "BALG": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "BLEL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "BTTE": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "CLBT": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "GEHL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "MMLN": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "RPTD": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "SBL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
-  },
-  "TLOL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
+    "ops": ""
   }
 }
