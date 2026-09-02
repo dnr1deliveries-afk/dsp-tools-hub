@@ -6,5 +6,9 @@
   "BALG": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "BLEL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
