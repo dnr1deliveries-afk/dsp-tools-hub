@@ -1059,6 +1059,13 @@ def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> di
             except ValueError:
                 total_cuts += 1
 
+        # Dynamic column widths -- sized to actual content so long
+        # Service Type strings (e.g. LEV variants) never break alignment
+        cycle_w  = max([len(r['cycle']) for r in routes] + [6])
+        svc_w    = max([len(r['service_type']) for r in routes] + [10])
+        len_w    = max([len(r['length']) for r in routes] + [6])
+        depart_w = max([len(r['depart']) for r in routes] + [5])
+
         lines = [
             'Good morning',
             '',
@@ -1068,8 +1075,8 @@ def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> di
         ]
         for r in routes:
             lines.append(
-                f"Cycle: {r['cycle']:<10} | {r['service_type']:<50} | "
-                f"{r['length']:<9} | Depart: {r['depart']:<8} | Cuts: {r['cuts']}"
+                f"Cycle: {r['cycle']:<{cycle_w}} | {r['service_type']:<{svc_w}} | "
+                f"{r['length']:<{len_w}} | Depart: {r['depart']:<{depart_w}} | Cuts: {r['cuts']}"
             )
         lines.append('```')
         lines.append('')
