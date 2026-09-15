@@ -1059,12 +1059,14 @@ def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> di
             except ValueError:
                 total_cuts += 1
 
-        # Dynamic column widths -- sized to actual content so long
-        # Service Type strings (e.g. LEV variants) never break alignment
-        cycle_w  = max([len(r['cycle']) for r in routes] + [6])
-        svc_w    = max([len(r['service_type']) for r in routes] + [10])
-        len_w    = max([len(r['length']) for r in routes] + [6])
-        depart_w = max([len(r['depart']) for r in routes] + [5])
+        # Dynamic column widths -- sized to actual content (and header
+        # labels) so long Service Type strings (e.g. LEV variants) never
+        # break alignment. Route Length dropped from the table per
+        # 2026-09-15 format change.
+        cycle_w  = max([len(r['cycle']) for r in routes] + [len('Cycle')])
+        svc_w    = max([len(r['service_type']) for r in routes] + [len('Service Type')])
+        depart_w = max([len(r['depart']) for r in routes] + [len('Depart Time')])
+        cuts_w   = max([len(str(r['cuts'])) for r in routes] + [len('Cuts')])
 
         lines = [
             'Good morning',
@@ -1072,11 +1074,12 @@ def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> di
             'Please see the below abortive routes for today:',
             '',
             '```',
+            f"| {'Cycle':<{cycle_w}} | {'Service Type':<{svc_w}} | {'Depart Time':<{depart_w}} | {'Cuts':<{cuts_w}} |",
         ]
         for r in routes:
             lines.append(
-                f"Cycle: {r['cycle']:<{cycle_w}} | {r['service_type']:<{svc_w}} | "
-                f"{r['length']:<{len_w}} | Depart: {r['depart']:<{depart_w}} | Cuts: {r['cuts']}"
+                f"| {r['cycle']:<{cycle_w}} | {r['service_type']:<{svc_w}} | "
+                f"{r['depart']:<{depart_w}} | {r['cuts']:<{cuts_w}} |"
             )
         lines.append('```')
         lines.append('')
