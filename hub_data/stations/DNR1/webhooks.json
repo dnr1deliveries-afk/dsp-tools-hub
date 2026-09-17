@@ -51,8 +51,8 @@
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
   },
-  "BALG": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": "https://hooks.slack.com/triggers/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"
+  "GSSL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
