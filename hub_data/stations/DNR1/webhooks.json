@@ -46,5 +46,9 @@
   "WACC": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "ASCL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   }
 }
