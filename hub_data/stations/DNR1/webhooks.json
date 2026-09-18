@@ -11,6 +11,10 @@
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
   },
+  "BALG": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
   "DELL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
@@ -42,6 +46,14 @@
   "MOLI": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "SLTD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
+  },
+  "TLOL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": "https://hooks.slack.com/triggers/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"
   },
   "ULSL": {
     "metrics": "https://hooks.slack.com/triggers/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",
