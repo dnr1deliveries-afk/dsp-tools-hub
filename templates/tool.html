@@ -30,6 +30,16 @@
                 <i class="bi bi-upload me-2"></i>Upload CSV
             </div>
             <div class="card-body p-3">
+                {% if tool.source_link %}
+                <div class="alert alert-info py-2 px-3 mb-3" style="font-size:.8rem;">
+                    <a href="{{ tool.source_link }}" target="_blank" class="fw-bold">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>{{ tool.source_label or 'Get source data' }}
+                    </a>
+                    {% if tool.source_note %}
+                    <div class="text-muted mt-1">{{ tool.source_note }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
                 <form method="POST" enctype="multipart/form-data" id="uploadForm">
                     {% for f in tool.files %}
                     <div class="mb-3">

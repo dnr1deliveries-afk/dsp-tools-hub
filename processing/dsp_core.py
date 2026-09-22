@@ -98,46 +98,64 @@ COMPLIANT_FOOTER = (
 # DSP CHASE
 # ============================================================================
 
-def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
-                            safe_mode: bool = False) -> tuple:
+def generate_chase_messages(d1_bytes: bytes, d2_bytes: bytes = None,
+                            d3_bytes: bytes = None, d4_bytes: bytes = None,
+                            station: str = None, safe_mode: bool = False) -> tuple:
     """
-    DSP Chase — legacy two-bucket format.
+    DSP Chase — D-1 to D-4 not-returned shipments per DSP (v3.1, 2026-09-22).
 
-    Splits outstanding shipments into two groups per DSP:
-        - Driver Marked Missing : Attempt Reason Code == ITEMS_MISSING
-        - To Chase              : everything else
+    Replaces the legacy Scrub Error + SearchResults join. Each day's file
+    now uses the LastMilePickupInformationV2 export schema and already
+    carries the route code, so no separate SearchResults lookup is needed.
+
+    v3.1: Files are now downloaded UK-wide (all sites) from Mercury —
+    NOT pre-filtered to a single station. Rows are filtered here to the
+    signed-in station's SITE code before grouping by DSP, so the user
+    doesn't need to filter/export a station-specific file themselves.
+
+    No bucket split (Driver Marked Missing removed 2026-09-22) — every
+    outstanding row for the day is listed with its
+    LastMilePickupInformationV2.InternalStatusCode shown as a 3rd column.
 
     Inputs:
-        file_bytes   : OUTSTANDING SCRUB ERROR*.csv
-        search_bytes : SearchResults*.csv  (Tracking ID -> Route Code lookup)
+        d1_bytes : D-1 not-returned CSV (required)
+        d2_bytes : D-2 not-returned CSV (optional)
+        d3_bytes : D-3 not-returned CSV (optional)
+        d4_bytes : D-4 not-returned CSV (optional)
+        station  : station code to filter SITE column to (e.g. 'DNR1').
+                   If blank/None, no site filtering is applied (all sites kept).
+
+        Expected columns per file: trackingId, SITE, RoutePlan.routeCode,
+        LastMilePickupInformationV2.InternalStatusCode,
+        LMTRUpdates.PTRAS.dspShortCode
 
     Returns: (messages_dict, {})
         - messages_dict: {dsp: message_text}
         - empty dict (second value kept for backwards-compatible call signature)
     """
-    # Build route code lookup from SearchResults
-    route_lookup = {}
-    if search_bytes:
-        for row in _open_csv(search_bytes):
-            tid   = row.get('Tracking ID', '').strip()
-            route = row.get('Route Code', '').strip()
-            if tid and route:
-                route_lookup[tid] = route
+    day_files   = [('D-1', d1_bytes), ('D-2', d2_bytes), ('D-3', d3_bytes), ('D-4', d4_bytes)]
+    station_up  = (station or '').strip().upper()
 
-    # Group by DSP -> bucket ('missing' | 'chase') -> list of {tid, route}
-    dsp_data = defaultdict(lambda: {'chase': [], 'missing': []})
+    # dsp -> day_label -> list of {tid, route, status}
+    dsp_data = defaultdict(lambda: defaultdict(list))
 
-    for row in _open_csv(file_bytes):
-        dsp    = row.get('DSP Name', '').strip()
-        tid    = row.get('trackingId', '').strip()
-        reason = row.get('Attempt Reason Code', '').strip().upper()
-
-        if not (dsp and tid):
+    for day_label, file_bytes in day_files:
+        if not file_bytes:
             continue
+        for row in _open_csv(file_bytes):
+            site = (row.get('SITE') or '').strip().upper()
+            if station_up and site != station_up:
+                continue
 
-        route_code = route_lookup.get(tid, '')
-        bucket = 'missing' if reason == 'ITEMS_MISSING' else 'chase'
-        dsp_data[dsp][bucket].append({'tid': tid, 'route': route_code})
+            dsp = (row.get('LMTRUpdates.PTRAS.dspShortCode') or '').strip().upper()
+            tid = (row.get('trackingId') or '').strip()
+
+            if not (dsp and tid):
+                continue
+
+            route  = (row.get('RoutePlan.routeCode') or '').strip()
+            status = (row.get('LastMilePickupInformationV2.InternalStatusCode') or '').strip().upper() or '—'
+            dsp_data[dsp][day_label].append({'tid': tid, 'route': route, 'status': status})
 
     today    = datetime.now().strftime('%d/%m/%Y')
     messages = {}
@@ -148,32 +166,39 @@ def generate_chase_messages(file_bytes: bytes, search_bytes: bytes = None,
             return (int(nums[-1]) if nums else 9999, item['tid'])
         return (9999, item['tid'])
 
-    def build_section(title, items):
+    def build_day_table(items):
         items = sorted(items, key=sort_key)
-        lines = [f'{title} ({len(items)}):']
-        for item in items:
-            route_display = f' ({item["route"]})' if item['route'] else ''
-            lines.append(f'  {item["tid"]}{route_display}')
+        tid_w    = max([len(i['tid']) for i in items] + [len('Tracking ID')])
+        route_w  = max([len(i['route']) for i in items] + [len('Route')])
+        status_w = max([len(i['status']) for i in items] + [len('Status')])
+
+        lines = [
+            '```',
+            f"| {'Tracking ID':<{tid_w}} | {'Route':<{route_w}} | {'Status':<{status_w}} |",
+        ]
+        for i in items:
+            lines.append(
+                f"| {i['tid']:<{tid_w}} | {i['route']:<{route_w}} | {i['status']:<{status_w}} |"
+            )
+        lines.append('```')
         return '\n'.join(lines)
 
     for dsp in sorted(dsp_data.keys()):
-        chase_items   = dsp_data[dsp]['chase']
-        missing_items = dsp_data[dsp]['missing']
+        day_sections = []
+        for day_label, _ in day_files:
+            items = dsp_data[dsp].get(day_label, [])
+            if not items:
+                continue
+            day_sections.append(f'{day_label} ({len(items)}):\n{build_day_table(items)}')
 
-        if not chase_items and not missing_items:
+        if not day_sections:
             continue
-
-        sections = []
-        if chase_items:
-            sections.append(build_section('To Chase', chase_items))
-        if missing_items:
-            sections.append(build_section('Driver Marked Missing', missing_items))
 
         content = (
             f'Outstanding Shipments \u2014 {dsp}\n'
             f'Updated: {today}\n\n'
             f'Good morning. Please see below for any shipments not yet returned to station.\n\n'
-            + '\n\n'.join(sections)
+            + '\n\n'.join(day_sections)
             + '\n\nAppreciate your support.'
         )
         messages[dsp] = content

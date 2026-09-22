@@ -81,11 +81,19 @@ TOOLS = {
         'name':      'DSP Chase',
         'icon':      'bi-search',
         'emoji':     '🔍',
-        'desc':      'Outstanding scrub error shipments per DSP with route codes',
-        'files':     [{'id': 'csv_file',    'label': 'Scrub Error CSV',
-                       'hint': 'OUTSTANDING SCRUB ERROR*.csv', 'required': True},
-                      {'id': 'search_file', 'label': 'SearchResults CSV',
-                       'hint': 'SearchResults*.csv — Route Code lookup', 'required': True}],
+        'desc':      'Outstanding not-returned shipments per DSP, D-1 to D-4, with route and status',
+        'source_label': 'Get D-1 to D-4 files from Mercury',
+        'source_link':  'https://c3.amazon.com/eu/mercury_amzl/#/dashboard/elasticsearch/1134b319-286a-3010-bf3b-f5fca0b32d52',
+        'source_note':  'Download all 4 files — D-1, D-2, D-3 & D-4 — from the Mercury dashboard above. '
+                         'The export covers all UK sites; results below are automatically filtered to your signed-in station.',
+        'files':     [{'id': 'd1_file', 'label': 'D-1 Not Returned CSV',
+                       'hint': 'D1 NDNR_*.csv — UK-wide export', 'required': True},
+                      {'id': 'd2_file', 'label': 'D-2 Not Returned CSV',
+                       'hint': 'D2 NDNR_*.csv — UK-wide export', 'required': True},
+                      {'id': 'd3_file', 'label': 'D-3 Not Returned CSV',
+                       'hint': 'D3 NDNR_*.csv — UK-wide export', 'required': True},
+                      {'id': 'd4_file', 'label': 'D-4 Not Returned CSV',
+                       'hint': 'D4 NDNR_*.csv — UK-wide export', 'required': True}],
         'safe_affected': False,
     },
     'pickups': {
@@ -435,7 +443,7 @@ def tool(tool_id):
             tracer_file  = request.files.get('tracer_file')
 
             # Skip generic csv_file validation for tools with custom file handling
-            if tool_id not in ('tracer_bridge',):
+            if tool_id not in ('tracer_bridge', 'chase'):
                 if not csv_file or not csv_file.filename:
                     raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
                 file_bytes = csv_file.read()
@@ -448,7 +456,23 @@ def tool(tool_id):
             if tool_id == 'pickups':
                 messages, _ = gen(file_bytes, search_bytes, safe_mode=safe_mode)
             elif tool_id == 'chase':
-                messages, _ = gen(file_bytes, search_bytes=search_bytes, safe_mode=safe_mode)
+                # Chase v3.0: D-1 to D-4 not-returned exports
+                # (LastMilePickupInformationV2 schema, route code embedded — no SearchResults join)
+                d1_file = request.files.get('d1_file')
+                d2_file = request.files.get('d2_file')
+                d3_file = request.files.get('d3_file')
+                d4_file = request.files.get('d4_file')
+
+                if not d1_file or not d1_file.filename:
+                    raise ValueError('Please upload the D-1 Not Returned CSV.')
+
+                d1_bytes = d1_file.read()
+                d2_bytes = d2_file.read() if d2_file and d2_file.filename else None
+                d3_bytes = d3_file.read() if d3_file and d3_file.filename else None
+                d4_bytes = d4_file.read() if d4_file and d4_file.filename else None
+
+                messages, _ = gen(d1_bytes, d2_bytes, d3_bytes, d4_bytes,
+                                   station=get_station(), safe_mode=safe_mode)
             elif tool_id == 'tracer_bridge':
                 # Tracer Bridge: Not Recovered + SearchResults + optional Bulk History
                 not_recovered_file = request.files.get('not_recovered_file')
