@@ -228,13 +228,13 @@ TOOLS = {
     'siphon_review': {
         'name':      'Siphon Review',
         'icon':      'bi-graph-down-arrow',
-        'emoji':     '\ud83d\udcc9',
-        'desc':      'Flag DSPs under FRT (flex up target) per day — sends to MDO channels',
+        'emoji':     '',
+        'desc':      'Flag DSPs under FRT (flex up target) per day - sends to MDO channels',
         'files':     [{'id': 'csv_file', 'label': 'Siphon Tracker CSV',
-                       'hint': 'Siphon_Tracker_*.csv — Week, Station, Cycle, DSP, Date, SUI, FRT, Meets_FRT',
+                       'hint': 'Siphon_Tracker_*.csv - Week, Station, Cycle, DSP, Date, SUI, FRT, Meets_FRT',
                        'required': True}],
         'safe_affected': False,
-        'compliant_note': '\ud83d\udce8 MDO Channel: Sent to DSP business owner chat, not metrics/ops',
+        'compliant_note': 'MDO Channel: Sent to DSP business owner chat, not metrics/ops',
         'default_channel': 'mdo',
     },
     # REMOVED TOOLS (No compliant path under Week 21 framework)
