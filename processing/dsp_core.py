@@ -1239,15 +1239,15 @@ def generate_siphon_review_messages(file_bytes: bytes, safe_mode: bool = False) 
         body = '\n\n'.join(sections)
 
         msg = (
-            f"Good morning,\n"
+            f"Hi,\n"
             f"\n"
-            f"We are currently reviewing capacity and your ECP capacity "
+            f"We are currently reviewing OTR capacity and your ECP capacity "
             f"looks under FRT (flex up target) on the following days:\n"
             f"\n"
             f"{body}\n"
             f"\n"
             f"Could you please review as soon as possible and let me know "
-            f"if you can increase to match your targets please?"
+            f"if you can increase to match your FRT target please?"
         )
 
         messages[dsp] = msg
