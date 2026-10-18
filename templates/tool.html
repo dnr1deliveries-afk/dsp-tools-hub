@@ -94,13 +94,18 @@
                 <div class="d-flex gap-3 mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="channel"
-                               id="chMetrics" value="metrics" checked>
+                               id="chMetrics" value="metrics" {{ 'checked' if tool.get('default_channel', 'metrics') == 'metrics' else '' }}>
                         <label class="form-check-label small" for="chMetrics">📊 Metrics</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="channel"
-                               id="chOps" value="ops">
-                        <label class="form-check-label small" for="chOps">🔧 OPS</label>
+                               id="chOps" value="ops" {{ 'checked' if tool.get('default_channel', 'metrics') == 'ops' else '' }}>
+                        <label class="form-check-label small" for="chOps">📋 OPS</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="channel"
+                               id="chMdo" value="mdo" {{ 'checked' if tool.get('default_channel', 'metrics') == 'mdo' else '' }}>
+                        <label class="form-check-label small" for="chMdo">💬 MDO</label>
                     </div>
                 </div>
 

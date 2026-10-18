@@ -1115,3 +1115,141 @@ def generate_abortive_messages(file_bytes: bytes, safe_mode: bool = False) -> di
         messages[dsp] = '\n'.join(lines)
 
     return messages
+
+
+
+# ============================================================================
+# SIPHON REVIEW — FRT capacity gap alerts to MDO channels
+# ============================================================================
+
+DAY_NAMES = {
+    0: 'Monday',
+    1: 'Tuesday',
+    2: 'Wednesday',
+    3: 'Thursday',
+    4: 'Friday',
+    5: 'Saturday',
+    6: 'Sunday',
+}
+
+
+def generate_siphon_review_messages(file_bytes: bytes, safe_mode: bool = False) -> dict:
+    """
+    Siphon Review — flag DSPs under FRT (Flex-up Route Target) per day.
+
+    Input CSV columns: Week, Station, Cycle, DSP, Date, SUI, Okami, FRT,
+                       Delta_Okami, Delta_FRT, Meets_Okami, Meets_FRT, Service_Types
+
+    Logic:
+        - Rows where Meets_FRT == 'No' are flagged
+        - Grouped per DSP → per Week → per Cycle (separate sections)
+        - Delta_FRT is negative when under target; abs(Delta_FRT) = routes short
+        - Cycles with zero flags for a DSP are omitted
+        - Rows where FRT == 0 (empty cycles) are skipped entirely
+
+    Returns: {dsp: message_text}
+    """
+    reader = _open_csv(file_bytes)
+
+    # Structure: {dsp: {week: {cycle: [(date_obj, day_name, date_str, routes_under)]}}}
+    flags = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    warnings = []
+
+    for row in reader:
+        dsp = (row.get('DSP') or '').strip().upper()
+        if not dsp:
+            continue
+
+        meets_frt = (row.get('Meets_FRT') or '').strip()
+        if meets_frt != 'No':
+            continue
+
+        # Skip zero-FRT rows (empty cycle placeholders)
+        try:
+            frt_val = int(float(row.get('FRT') or '0'))
+        except ValueError:
+            frt_val = 0
+        if frt_val == 0:
+            continue
+
+        week  = (row.get('Week') or '').strip()
+        cycle = (row.get('Cycle') or '').strip()
+        date_str = (row.get('Date') or '').strip()
+
+        try:
+            delta = int(float(row.get('Delta_FRT') or '0'))
+        except ValueError:
+            delta = 0
+        routes_under = abs(delta)
+
+        # Parse date for day name and display format
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            day_name = DAY_NAMES[date_obj.weekday()]
+            display_date = date_obj.strftime('%d/%m')
+        except (ValueError, KeyError):
+            day_name = ''
+            display_date = date_str
+            date_obj = datetime.min
+
+        flags[dsp][week][cycle].append((date_obj, day_name, display_date, routes_under))
+
+    if not flags:
+        return {}
+
+    # Build one message per DSP
+    messages = {}
+    for dsp in sorted(flags.keys()):
+        weeks = flags[dsp]
+        sections = []
+
+        for week in sorted(weeks.keys()):
+            cycles = weeks[week]
+            cycle_sections = []
+
+            for cycle in sorted(cycles.keys()):
+                days = cycles[cycle]
+                if not days:
+                    continue
+
+                # Sort by date
+                days.sort(key=lambda d: d[0])
+
+                # Compute alignment padding for day names
+                max_day_len = max(len(d[1]) for d in days)
+
+                day_lines = []
+                for date_obj, day_name, display_date, routes_under in days:
+                    route_word = 'route' if routes_under == 1 else 'routes'
+                    padded_day = f"{day_name},{' ' * (max_day_len - len(day_name))}"
+                    day_lines.append(
+                        f"{padded_day}  {display_date}:  {routes_under} {route_word} under target"
+                    )
+
+                cycle_block = f"*{cycle}*\n" + '\n'.join(day_lines)
+                cycle_sections.append(cycle_block)
+
+            if cycle_sections:
+                week_block = f"*{week}*\n\n" + '\n\n'.join(cycle_sections)
+                sections.append(week_block)
+
+        if not sections:
+            continue
+
+        body = '\n\n'.join(sections)
+
+        msg = (
+            f"Good morning,\n"
+            f"\n"
+            f"We are currently reviewing capacity and your ECP capacity "
+            f"looks under FRT (flex up target) on the following days:\n"
+            f"\n"
+            f"{body}\n"
+            f"\n"
+            f"Could you please review as soon as possible and let me know "
+            f"if you can increase to match your targets please?"
+        )
+
+        messages[dsp] = msg
+
+    return messages

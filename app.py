@@ -42,6 +42,7 @@ from processing.dsp_core import (
     generate_vsa_messages,
     generate_tracer_bridge_messages,
     generate_abortive_messages,
+    generate_siphon_review_messages,
     # Removed: generate_nursery_overuse_messages (no compliant path)
     # Removed: generate_ridealong_overuse_messages (no compliant path)
 )
@@ -224,7 +225,18 @@ TOOLS = {
         'safe_affected': False,
         'compliant_note': '✅ Compliant: Shows route length/service type/time detail, no DA/personnel detail',
     },
-
+    'siphon_review': {
+        'name':      'Siphon Review',
+        'icon':      'bi-graph-down-arrow',
+        'emoji':     '\ud83d\udcc9',
+        'desc':      'Flag DSPs under FRT (flex up target) per day — sends to MDO channels',
+        'files':     [{'id': 'csv_file', 'label': 'Siphon Tracker CSV',
+                       'hint': 'Siphon_Tracker_*.csv — Week, Station, Cycle, DSP, Date, SUI, FRT, Meets_FRT',
+                       'required': True}],
+        'safe_affected': False,
+        'compliant_note': '\ud83d\udce8 MDO Channel: Sent to DSP business owner chat, not metrics/ops',
+        'default_channel': 'mdo',
+    },
     # REMOVED TOOLS (No compliant path under Week 21 framework)
     # ──────────────────────────────────────────────────────────────────────────
     # 'nursery_overuse' — REMOVED: Directs DSP DA deployment decisions
@@ -246,6 +258,7 @@ GENERATORS = {
     'vsa':                generate_vsa_messages,
     'tracer_bridge':      generate_tracer_bridge_messages,
     'abortive_routes':    generate_abortive_messages,
+    'siphon_review':      generate_siphon_review_messages,
     # Removed: nursery_overuse, ridealong_overuse
 }
 
