@@ -26,5 +26,9 @@
   "SBL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "NEOD": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
