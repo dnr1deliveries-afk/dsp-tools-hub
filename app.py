@@ -32,19 +32,16 @@ from flask import (
 from processing.dsp_core import (
     generate_chase_messages,
     generate_pickup_messages,
-    generate_rostering_messages,
-    generate_stc_messages,
-    generate_cc_messages,
-    generate_pod_messages,
-    generate_noa_messages,
     generate_bags_messages,
     generate_carrier_inv_messages,
     generate_vsa_messages,
-    generate_tracer_bridge_messages,
     generate_abortive_messages,
     generate_siphon_review_messages,
     # Removed: generate_nursery_overuse_messages (no compliant path)
     # Removed: generate_ridealong_overuse_messages (no compliant path)
+    # Removed: generate_rostering_messages, generate_stc_messages,
+    # Removed: generate_cc_messages, generate_pod_messages,
+    # Removed: generate_noa_messages, generate_tracer_bridge_messages
 )
 from storage.station_store import (
     load_station_webhooks, save_station_webhooks,
@@ -107,56 +104,6 @@ TOOLS = {
         'safe_affected': False,
         'compliant_note': '✅ Compliant: Shows DSP-level totals only, no route lookup',
     },
-    'rostering': {
-        'name':      'Rostering',
-        'icon':      'bi-clipboard-check',
-        'emoji':     '📋',
-        'desc':      'Rostering compliance percentage per DSP',
-        'files':     [{'id': 'csv_file', 'label': 'Rostering Capacity CSV',
-                       'hint': 'Rostering_Capacity_C_*.csv', 'required': True}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows compliance % only, no slot-level detail',
-    },
-    'stc': {
-        'name':      'STC',
-        'icon':      'bi-truck',
-        'emoji':     '🚚',
-        'desc':      'Fleet service type compliance percentage per DSP',
-        'files':     [{'id': 'csv_file', 'label': 'STC Deep Dive CSV',
-                       'hint': 'Dive Deep Data Service Type Compliance*.csv', 'required': True}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows fleet % only, no VIN/route detail',
-    },
-    'cc': {
-        'name':      'Contact Compliance',
-        'icon':      'bi-telephone-fill',
-        'emoji':     '📞',
-        'desc':      'Contact compliance summary per DSP (DSP totals only)',
-        'files':     [{'id': 'csv_file', 'label': 'CC Exceptions CSV',
-                       'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no DA/delivery detail',
-    },
-    'pod': {
-        'name':      'POD',
-        'icon':      'bi-camera-fill',
-        'emoji':     '📷',
-        'desc':      'POD opportunity count per DSP (DSP totals only)',
-        'files':     [{'id': 'csv_file', 'label': 'POD Summary CSV',
-                       'hint': 'POD_Summary_*.csv', 'required': True}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no DA detail',
-    },
-    'noa': {
-        'name':      'NOA',
-        'icon':      'bi-bell-fill',
-        'emoji':     '🔔',
-        'desc':      'Notification of Arrival event count per DSP',
-        'files':     [{'id': 'csv_file', 'label': 'Exceptions CSV',
-                       'hint': 'Exceptions_Based_Dee_*.csv', 'required': True}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows event count only, no action requests',
-    },
     'bags': {
         'name':      'Unreturned Bags',
         'icon':      'bi-bag-fill',
@@ -186,20 +133,6 @@ TOOLS = {
                        'hint': 'Dive Deep Data Total Expected VSA Audits (Cycle)*.csv', 'required': True}],
         'safe_affected': False,
         'compliant_note': '⚠️ Contains vehicle-level detail (VIN/VRN) — permitted per PoE policy update 2026-07-12',
-    },
-    'tracer_bridge': {
-        'name':      'Tracer Bridge',
-        'icon':      'bi-clipboard2-pulse',
-        'emoji':     '📊',
-        'desc':      'Not recovered package count per DSP (DSP totals only)',
-        'files':     [{'id': 'not_recovered_file', 'label': 'Not Recovered Deep Dive CSV',
-                       'hint': 'Not_Recovered_Deep_D_*.csv', 'required': True},
-                      {'id': 'search_file', 'label': 'SearchResults CSV',
-                       'hint': 'SearchResults*.csv — DSP lookup', 'required': True},
-                      {'id': 'bulk_history_file', 'label': 'Bulk History Export (optional)',
-                       'hint': 'bulk_history_export*.csv — detects returned packages', 'required': False}],
-        'safe_affected': False,
-        'compliant_note': '✅ Compliant: Shows DSP-level totals only, no tracking IDs',
     },
     'robl': {
         'name':      'ROBL Offsets',
@@ -248,18 +181,13 @@ TOOLS = {
 GENERATORS = {
     'chase':              generate_chase_messages,
     'pickups':            generate_pickup_messages,
-    'rostering':          generate_rostering_messages,
-    'stc':                generate_stc_messages,
-    'cc':                 generate_cc_messages,
-    'pod':                generate_pod_messages,
-    'noa':                generate_noa_messages,
     'bags':               generate_bags_messages,
     'carrier_inv':        generate_carrier_inv_messages,
     'vsa':                generate_vsa_messages,
-    'tracer_bridge':      generate_tracer_bridge_messages,
     'abortive_routes':    generate_abortive_messages,
     'siphon_review':      generate_siphon_review_messages,
     # Removed: nursery_overuse, ridealong_overuse
+    # Removed: rostering, stc, cc, pod, noa, tracer_bridge
 }
 
 
@@ -456,7 +384,7 @@ def tool(tool_id):
             tracer_file  = request.files.get('tracer_file')
 
             # Skip generic csv_file validation for tools with custom file handling
-            if tool_id not in ('tracer_bridge', 'chase'):
+            if tool_id not in ('chase',):
                 if not csv_file or not csv_file.filename:
                     raise ValueError(f'Please upload the {tool_meta["files"][0]["label"]}.')
                 file_bytes = csv_file.read()
@@ -486,30 +414,6 @@ def tool(tool_id):
 
                 messages, _ = gen(d1_bytes, d2_bytes, d3_bytes, d4_bytes,
                                    station=get_station(), safe_mode=safe_mode)
-            elif tool_id == 'tracer_bridge':
-                # Tracer Bridge: Not Recovered + SearchResults + optional Bulk History
-                not_recovered_file = request.files.get('not_recovered_file')
-                search_file_tb = request.files.get('search_file')
-                bulk_history_file = request.files.get('bulk_history_file')
-                
-                if not not_recovered_file or not not_recovered_file.filename:
-                    raise ValueError('Please upload the Not Recovered Deep Dive CSV.')
-                if not search_file_tb or not search_file_tb.filename:
-                    raise ValueError('Please upload the SearchResults CSV for DSP lookup.')
-                
-                not_recovered_bytes = not_recovered_file.read()
-                search_bytes_tb = search_file_tb.read()
-                bulk_history_bytes = bulk_history_file.read() if bulk_history_file and bulk_history_file.filename else None
-                
-                messages = gen(
-                    not_recovered_bytes,
-                    search_bytes_tb,
-                    bulk_history_bytes=bulk_history_bytes,
-                    safe_mode=safe_mode
-                )
-                
-                if bulk_history_bytes:
-                    flash('🔍 Bulk history analyzed for returned packages.', 'info')
             else:
                 messages = gen(file_bytes, safe_mode=safe_mode)
 
