@@ -22,5 +22,9 @@
   "GSSL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
+  },
+  "SBL": {
+    "metrics": "https://hooks.slack.com/triggers/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",
+    "ops": ""
   }
 }
