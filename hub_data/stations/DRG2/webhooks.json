@@ -10,9 +10,5 @@
   "H2OL": {
     "metrics": "https://hooks.slack.com/triggers/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",
     "ops": ""
-  },
-  "LLGL": {
-    "metrics": "https://hooks.slack.com/triggers/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",
-    "ops": ""
   }
 }
